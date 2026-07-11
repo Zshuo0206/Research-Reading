@@ -1,0 +1,59 @@
+wave: 0
+purpose: "Wave 0 governance and mock dry-run ownership"
+generated_at_utc: "2026-07-11T00:00:00Z"
+rules:
+  one_writer_per_file: true
+  public_contract_paths_locked: true
+  child_agents_cannot_merge: true
+agents:
+  orchestrator:
+    role: main_control
+    writable_paths:
+      - docs/CURRENT_STATE.md
+      - docs/devlog/**
+      - docs/audits/**
+    read_only_paths:
+      - apps/**
+      - packages/**
+  governance-agent:
+    role: governance_documentation
+    writable_paths:
+      - docs/governance/**
+      - docs/templates/**
+      - docs/standards/**
+      - docs/quality/**
+      - docs/runbooks/**
+    read_only_paths:
+      - AGENTS.md
+      - docs/CURRENT_STATE.md
+  mock-contract-agent:
+    role: dry_run_contract_owner
+    writable_paths:
+      - docs/audits/dry-run-contract.md
+    read_only_paths:
+      - packages/contracts/**
+  mock-ui-agent:
+    role: dry_run_ui_owner
+    writable_paths:
+      - docs/audits/dry-run-ui.md
+    read_only_paths:
+      - apps/web/**
+  skeleton-agent:
+    role: placeholder_skeleton_owner
+    writable_paths:
+      - apps/**
+      - packages/contracts/**
+      - scripts/**
+      - tests/**
+      - docker-compose.yml
+      - package.json
+      - .env.example
+      - .gitignore
+      - .github/**
+    read_only_paths:
+      - docs/**
+locked_paths:
+  - docs/integration/ownership-map.yaml
+  - package-lock.json
+  - pnpm-lock.yaml
+  - yarn.lock

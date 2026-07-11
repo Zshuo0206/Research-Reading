@@ -1,0 +1,89 @@
+task_id: T-DRY-A
+title: "Dry-run A — 生成无业务契约变更说明"
+owner_role: mock-contract-agent
+status: READY
+wave: 0
+objective: "演练子 Agent 独立任务、worktree、交接和公共接口变更请求。"
+background: "任务只生成审计说明，不修改真实共享契约。"
+scope:
+  - "docs/audits/dry-run-contract.md"
+out_of_scope:
+  - "packages/contracts/**"
+  - "apps/**"
+dependencies: []
+writable_paths:
+  - "docs/audits/dry-run-contract.md"
+read_only_paths:
+  - "packages/contracts/**"
+  - "docs/governance/**"
+forbidden_paths:
+  - "packages/contracts/**"
+  - "docs/CURRENT_STATE.md"
+contract_version: "wave0.v1"
+inputs:
+  - name: "现有 Wave 0 健康契约"
+    type: "json"
+    source: "packages/contracts/wave0.schema.json"
+outputs:
+  - name: "Mock 契约变更说明"
+    type: "markdown"
+    destination: "docs/audits/dry-run-contract.md"
+acceptance_criteria:
+  - "说明一个假设的接口变更，并明确必须走 RFC"
+required_tests:
+  - "主控结构检查"
+manual_acceptance:
+  - "确认未修改共享契约"
+security_considerations:
+  - "不引入秘密或外部依赖"
+risks:
+  - risk: "误修改共享契约"
+    mitigation: "路径只读且由主控复核 diff"
+rollback_plan: "删除 mock 审计文件前需人工确认；演练采用反向提交。"
+deliverables:
+  - "dry-run-contract.md"
+*** Add File: D:/Research Reading/docs/tasks/backlog/T-DRY-B-ui-note.yaml
+task_id: T-DRY-B
+title: "Dry-run B — 生成无业务前端交接说明"
+owner_role: mock-ui-agent
+status: READY
+wave: 0
+objective: "演练第二个独立任务、并行 ownership 和失败恢复记录。"
+background: "任务只生成审计说明，不修改真实前端。"
+scope:
+  - "docs/audits/dry-run-ui.md"
+out_of_scope:
+  - "apps/web/**"
+  - "docs/audits/dry-run-contract.md"
+dependencies: []
+writable_paths:
+  - "docs/audits/dry-run-ui.md"
+read_only_paths:
+  - "apps/web/**"
+  - "docs/governance/**"
+forbidden_paths:
+  - "apps/web/**"
+  - "docs/CURRENT_STATE.md"
+contract_version: "wave0.v1"
+inputs:
+  - name: "Wave 0 前端占位范围"
+    type: "markdown"
+    source: "apps/web/README.md"
+outputs:
+  - name: "Mock UI 交接说明"
+    type: "markdown"
+    destination: "docs/audits/dry-run-ui.md"
+acceptance_criteria:
+  - "记录可写边界、失败恢复和主控复跑测试要求"
+required_tests:
+  - "主控结构检查"
+manual_acceptance:
+  - "确认未修改前端代码"
+security_considerations:
+  - "不包含用户数据"
+risks:
+  - risk: "和 Dry-run A 修改同一文件"
+    mitigation: "ownership map 分配不同审计文件"
+rollback_plan: "按失败 Agent runbook 隔离并反向提交。"
+deliverables:
+  - "dry-run-ui.md"

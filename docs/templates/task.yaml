@@ -1,0 +1,47 @@
+task_id: T-000
+title: ""
+owner_role: ""
+status: DRAFT
+wave: 0
+
+objective: ""
+background: ""
+scope:
+  - ""
+out_of_scope:
+  - ""
+dependencies:
+  - task_id: ""
+    reason: ""
+
+writable_paths:
+  - ""
+read_only_paths:
+  - ""
+forbidden_paths:
+  - ""
+contract_version: "unfrozen"
+
+inputs:
+  - name: ""
+    type: ""
+    source: ""
+outputs:
+  - name: ""
+    type: ""
+    destination: ""
+
+acceptance_criteria:
+  - ""
+required_tests:
+  - ""
+manual_acceptance:
+  - ""
+security_considerations:
+  - ""
+risks:
+  - risk: ""
+    mitigation: ""
+rollback_plan: ""
+deliverables:
+  - ""

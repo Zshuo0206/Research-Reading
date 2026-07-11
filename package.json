@@ -1,0 +1,17 @@
+{
+  "name": "research-reading-workbench",
+  "private": true,
+  "version": "0.0.0-wave0",
+  "type": "module",
+  "scripts": {
+    "format": "node scripts/check.mjs format",
+    "lint": "node scripts/check.mjs lint",
+    "typecheck": "node scripts/check.mjs typecheck",
+    "test": "node scripts/check.mjs test",
+    "build": "node scripts/check.mjs build",
+    "security": "node scripts/check.mjs security",
+    "ci": "node scripts/check.mjs all",
+    "api": "node apps/api/src/server.mjs",
+    "worker": "node apps/worker/src/worker.mjs"
+  }
+}

@@ -1,0 +1,50 @@
+task_id: T-001
+title: "建立 Wave 0 工程治理体系"
+owner_role: orchestrator
+status: DONE
+wave: 0
+objective: "建立 Codex 多 Agent 并行开发的权限、任务、ownership、契约、依赖和破坏性操作规则。"
+background: "空仓库需要先具备可执行的工程制度和会话恢复能力。"
+scope:
+  - "AGENTS.md"
+  - "docs/governance/**"
+  - "docs/templates/**"
+  - "docs/standards/**"
+  - "docs/quality/**"
+  - "docs/runbooks/**"
+out_of_scope:
+  - "真实产品业务"
+dependencies: []
+writable_paths:
+  - "AGENTS.md"
+  - "docs/**"
+read_only_paths: []
+forbidden_paths:
+  - "apps/**"
+  - "packages/**"
+contract_version: "wave0.v1"
+inputs:
+  - name: "用户 Wave 0 目标"
+    type: "text"
+    source: "user_request"
+outputs:
+  - name: "工程制度文档"
+    type: "markdown/yaml"
+    destination: "docs/"
+acceptance_criteria:
+  - "所有必需文档存在"
+  - "权限和唯一 ownership 规则明确"
+  - "失败、恢复、回滚和契约变更有正式流程"
+required_tests:
+  - "结构检查"
+manual_acceptance:
+  - "检查规则之间不存在互相授权冲突"
+security_considerations:
+  - "禁止密钥和未经批准的破坏性操作"
+risks:
+  - risk: "文档规则与未来实现不一致"
+    mitigation: "每个 Wave 入口复核并通过 RFC/ADR 更新"
+rollback_plan: "保留 Git 提交，使用反向提交，不使用强制 reset。"
+deliverables:
+  - "AGENTS.md"
+  - "governance/standards/quality/runbooks 文档"

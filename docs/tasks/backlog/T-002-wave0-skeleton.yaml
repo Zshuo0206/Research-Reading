@@ -1,0 +1,63 @@
+task_id: T-002
+title: "建立 Wave 0 最小工程骨架"
+owner_role: skeleton-agent
+status: DONE
+wave: 0
+objective: "提供无真实业务的前端、API、worker、共享契约、测试、命令入口、Docker Compose 和 CI。"
+background: "治理制度需要可执行的最小载体验证。"
+scope:
+  - "apps/**"
+  - "packages/contracts/**"
+  - "scripts/**"
+  - "tests/**"
+  - "docker-compose.yml"
+  - ".github/workflows/ci.yml"
+out_of_scope:
+  - "PDF 解析"
+  - "模型调用"
+  - "阅读问题生成"
+  - "Evidence 业务逻辑"
+  - "Markdown/Excel 业务导出"
+dependencies:
+  - task_id: T-001
+    reason: "遵守工程规则和 Wave 0 范围"
+writable_paths:
+  - "apps/**"
+  - "packages/contracts/**"
+  - "scripts/**"
+  - "tests/**"
+  - "docker-compose.yml"
+  - "package.json"
+  - ".env.example"
+  - ".gitignore"
+  - ".github/**"
+read_only_paths:
+  - "docs/**"
+forbidden_paths:
+  - "docs/CURRENT_STATE.md"
+  - "docs/governance/**"
+contract_version: "wave0.v1"
+inputs:
+  - name: "Wave 0 范围和标准"
+    type: "markdown"
+    source: "docs/"
+outputs:
+  - name: "可运行骨架"
+    type: "source"
+    destination: "apps/, packages/, scripts/, tests/"
+acceptance_criteria:
+  - "健康端点可运行"
+  - "npm run ci 通过"
+  - "没有真实业务模块"
+required_tests:
+  - "npm run ci"
+manual_acceptance:
+  - "确认健康端点之外没有产品 API"
+security_considerations:
+  - "只提交 .env.example，不提交密钥"
+risks:
+  - risk: "无第三方依赖导致后续技术栈仍未验证"
+    mitigation: "记录为 Wave 1 ADR，不在本轮扩大范围"
+rollback_plan: "删除本轮新增提交前先由负责人确认；优先反向提交。"
+deliverables:
+  - "占位应用、共享 Schema、测试、命令、Compose、CI"
