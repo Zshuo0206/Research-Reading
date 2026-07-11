@@ -3,7 +3,7 @@
 - Wave: Wave 0
 - 日期（UTC）：2026-07-11
 - 主控 Agent：Codex 主控 Agent
-- QA Agent：Wave 0 QA/主控复核流程
+- QA Agent：本轮未单独配置；主控按 QA 检查清单完成复核
 - 相关技术验收记录：`docs/audits/multi-agent-dry-run.md`、`docs/audits/wave0-consistency-review.md`、`docs/devlog/2026-07-11.md`
 - 产品目标记录：`docs/CURRENT_STATE.md`、`README.md`
 
@@ -11,7 +11,7 @@
 
 - 结论：`通过`
 - 主控技术验收结论：Wave 0 治理文件、无业务骨架、Mock 多 Agent 流程和集成记录已完成；既有 `node scripts/check.mjs all` 记录通过。
-- QA 独立检查结论：已复核任务边界、worktree 隔离、单文件 ownership、RFC 路径、失败恢复记录和最终主分支状态。
+- QA 检查结论：本轮没有独立 QA Agent；主控按 QA 检查清单复核了任务边界、worktree 隔离、单文件 ownership、RFC 路径、失败恢复记录和最终主分支状态，不将其表述为独立 QA 证据。
 - 责任 Agent 交接状态：T-DRY-A、T-DRY-B 均已交接、复核并集成。
 - 证据链接：`docs/integration/ownership-map.yaml`、`docs/tasks/backlog/T-DRY-A-contract-note.yaml`、`docs/tasks/backlog/T-DRY-B-ui-note.yaml`、`git status --short --branch` 记录。
 
