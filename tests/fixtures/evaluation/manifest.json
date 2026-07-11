@@ -1,0 +1,46 @@
+{
+  "manifest_version": "evaluation-manifest.v1",
+  "dataset_id": "eval_wave1_mock",
+  "samples": [
+    {
+      "sample_id": "sample_text_method",
+      "kind": "TEXT_PDF",
+      "source": { "title": "Licensed text fixture placeholder", "url": "https://example.org/licensed-text-fixture", "retrieved_at": "2026-07-11T00:00:00Z", "publisher_or_repository": "Project fixture registry" },
+      "license": { "spdx_id": "CC-BY-4.0", "evidence_url": "https://creativecommons.org/licenses/by/4.0/", "redistribution_allowed": false, "notes": "Metadata-only placeholder; no paper PDF is committed." },
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "page_count": 1,
+      "extraction_profile": "pdfjs-text-v1",
+      "reference": { "answerability": "ANSWERABLE", "questions": [{ "question_id": "q1", "text": "What method is evaluated?", "review_status": "CONFIRMED" }], "answers": [{ "question_id": "q1", "text": "The fixture evaluates the stated method.", "claim_types": ["PAPER_FACT"], "review_status": "CONFIRMED", "verification_status": "VERIFIED" }], "evidence": [{ "page_number": 1, "char_start": 0, "char_end": 6, "quote": "Method", "canonical_page_text_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }], "rejection_reason": null }
+    },
+    {
+      "sample_id": "sample_two_column_method",
+      "kind": "TWO_COLUMN_PDF",
+      "source": { "title": "Licensed two-column fixture placeholder", "url": "https://example.org/licensed-two-column-fixture", "retrieved_at": "2026-07-11T00:00:00Z", "publisher_or_repository": "Project fixture registry" },
+      "license": { "spdx_id": "CC-BY-4.0", "evidence_url": "https://creativecommons.org/licenses/by/4.0/", "redistribution_allowed": false, "notes": "Metadata-only placeholder; no paper PDF is committed." },
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "page_count": 2,
+      "extraction_profile": "pdfjs-text-v1",
+      "reference": { "answerability": "UNANSWERABLE", "questions": [], "answers": [], "evidence": [], "rejection_reason": "The requested claim is not supported by the available text." }
+    },
+    {
+      "sample_id": "sample_scanned_negative",
+      "kind": "SCANNED_NEGATIVE",
+      "source": { "title": "Scanned negative fixture placeholder", "url": "https://example.org/scanned-negative-fixture", "retrieved_at": "2026-07-11T00:00:00Z", "publisher_or_repository": "Project fixture registry" },
+      "license": { "spdx_id": "CC0-1.0", "evidence_url": "https://creativecommons.org/publicdomain/zero/1.0/", "redistribution_allowed": false, "notes": "Metadata-only placeholder; no paper PDF is committed." },
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "page_count": 1,
+      "extraction_profile": null,
+      "reference": { "answerability": "UNANSWERABLE", "questions": [], "answers": [], "evidence": [], "rejection_reason": "OCR is out of Wave 1 scope." }
+    },
+    {
+      "sample_id": "sample_unanswerable",
+      "kind": "UNANSWERABLE",
+      "source": { "title": "Unanswerable question fixture placeholder", "url": "https://example.org/unanswerable-fixture", "retrieved_at": "2026-07-11T00:00:00Z", "publisher_or_repository": "Project fixture registry" },
+      "license": { "spdx_id": "CC0-1.0", "evidence_url": "https://creativecommons.org/publicdomain/zero/1.0/", "redistribution_allowed": false, "notes": "Metadata-only placeholder; no paper PDF is committed." },
+      "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "page_count": 0,
+      "extraction_profile": null,
+      "reference": { "answerability": "UNANSWERABLE", "questions": [], "answers": [], "evidence": [], "rejection_reason": "No evidence is available for the question." }
+    }
+  ]
+}

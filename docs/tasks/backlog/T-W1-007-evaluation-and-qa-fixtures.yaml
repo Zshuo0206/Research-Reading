@@ -1,0 +1,69 @@
+task_id: T-W1-007
+title: "建立固定评测集、人工基准和独立 QA 检查"
+owner_role: qa-evaluation-agent
+status: PARTIAL
+wave: 1
+
+objective: "建立可重复的 PDF/模型/闭环质量证据，独立验证问题可用率和带证据回答接受率的测量方法。"
+background: "Wave 1 主要产品指标必须有固定输入、人工参考、证据位置和拒答基准，不能只依赖模型自评。"
+scope:
+  - "建立公开/开放许可论文 manifest、来源、hash、许可、页数和 extraction profile；仓库只提交 metadata-only fixture。"
+  - "建立正常文本、双栏、扫描负例和边界样本。"
+  - "为问题、回答断言、证据位置和不可回答问题建立人工参考。"
+  - "提供 deterministic Mock eval、API/E2E QA 检查、人工问题计划/回答/Evidence 参考格式和后续真实模型人工验收模板。"
+out_of_scope:
+  - "训练模型、扩大到多篇综合或公开用户论文。"
+  - "把未获许可的论文原文提交到仓库。"
+dependencies:
+  - task_id: T-W1-001
+    reason: "评测输出必须遵守冻结契约。"
+
+writable_paths:
+  - tests/evaluation/**
+  - tests/fixtures/evaluation/**
+  - docs/evaluation/**
+  - docs/audits/wave1-qa/**
+read_only_paths:
+  - packages/contracts/**
+  - apps/api/**
+  - apps/worker/**
+  - apps/web/**
+forbidden_paths:
+  - package.json
+  - package-lock.json
+  - docs/CURRENT_STATE.md
+contract_version: "wave1.v1"
+
+inputs:
+  - name: "固定论文与人工参考"
+    type: "licensed-evaluation-manifest"
+    source: "QA owner maintained"
+outputs:
+  - name: "独立 QA 报告与指标基线"
+    type: "auditable-evaluation"
+    destination: "docs/evaluation and docs/audits/wave1-qa"
+
+acceptance_criteria:
+  - "固定集每个样本有来源、许可证、许可证证据 URL、SHA-256、页数、profile 和用途。"
+  - "至少覆盖文本 PDF、双栏 PDF、扫描负例和不可回答问题。"
+  - "指标分母、人工审阅规则、修改后接受和拒绝原因定义清楚。"
+  - "QA Agent 不复用责任 Agent 的通过结论，能独立标记失败/未执行/例外。"
+  - "评测资料准备可以在 PDF/ModelGateway 实现前完成；本批次不伪造真实 PDF 或真实模型执行报告。"
+  - "产品接受率作为观察指标报告，不作为确定性 CI 合并门槛。"
+required_tests:
+  - "固定输入下 Mock 评测可重复。"
+  - "Schema、证据、断言分类、拒答和状态机 QA。"
+  - "许可/敏感信息扫描和 fixture hash 检查。"
+manual_acceptance:
+  - "主控复核指标报告、样本许可和 QA 证据链接。"
+security_considerations:
+  - "不得提交未获许可的论文全文或用户研究数据；API Key 不得进入 manifest、参考答案、日志或 fixture。"
+  - "评测日志脱敏，不记录 token 和原始模型 prompt。"
+risks:
+  - risk: "评测集过小或参考答案主观，指标不稳定。"
+    mitigation: "报告样本量和置信限制；同时保留结构化门槛和人工审核证据。"
+rollback_plan: "移除有许可问题的 fixture，保留 manifest/hash 和替代样本；不改变业务契约。"
+deliverables:
+  - "评测 manifest、参考标注和运行命令。"
+  - "独立 QA 报告和指标基线。"
+  - "Wave 1 技术验收所需的例外记录。"

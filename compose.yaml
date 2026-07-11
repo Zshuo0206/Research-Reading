@@ -1,0 +1,31 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    command: ["npm", "run", "--workspace", "apps/api", "start"]
+    environment:
+      API_HOST: 127.0.0.1
+      API_PORT: 4310
+    ports:
+      - "127.0.0.1:4310:4310"
+  worker:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    command: ["npm", "run", "--workspace", "apps/worker", "start"]
+    environment:
+      API_HOST: 127.0.0.1
+  web:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    command: ["npm", "run", "--workspace", "apps/web", "start"]
+    environment:
+      WEB_HOST: 127.0.0.1
+      WEB_PORT: 4173
+    ports:
+      - "127.0.0.1:4173:4173"
+    depends_on:
+      - api
+      - worker

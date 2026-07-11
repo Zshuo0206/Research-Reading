@@ -1,0 +1,67 @@
+task_id: T-W1-004A
+title: "实现 ModelGateway 接口、Mock 和模型输出验证"
+owner_role: model-gateway-agent
+status: DRAFT
+wave: 1
+
+objective: "为问题计划和回答提供同一版本化 ModelGateway 接口、确定性 Mock、证据引用边界和服务端输出验证。"
+background: "Wave 1 必须可替换且可测试；真实供应商适配器移出本 Wave 验收，由后续供应商 RFC 管理。"
+scope:
+  - "实现 model-gateway.v1 输入输出、Mock fixture 和 context_span_id 候选引用。"
+  - "实现 Schema、断言类型、服务端 Evidence 物化、无证据拒答和长度校验。"
+  - "实现 Mock 的超时、失败、预算超限和错误映射；保留 OpenAI-compatible BYOK adapter seam。"
+out_of_scope:
+  - "真实外部模型调用、OpenAI-compatible adapter、供应商 SDK 和连接测试。"
+  - "训练模型、embedding、RAG 平台和多模型编排。"
+dependencies:
+  - task_id: T-W1-001
+    reason: "必须遵守 model-gateway.v1、answer.v1 和 evidence.v1。"
+  - task_id: T-W1-002
+    reason: "需要真实测试、类型和安全命令。"
+
+writable_paths:
+  - packages/model-gateway/**
+  - apps/api/src/model/**
+  - apps/worker/src/model/**
+  - tests/integration/model/**
+  - tests/fixtures/model/**
+read_only_paths:
+  - packages/contracts/wave1/**
+  - packages/pdf/**
+forbidden_paths:
+  - apps/web/**
+  - apps/api/src/persistence/**
+  - package.json
+contract_version: "model-gateway.v1 + answer.v1 + evidence.v1"
+
+inputs:
+  - name: "方法学习上下文"
+    type: "versioned-model-input"
+    source: "document-ingest and workflow"
+outputs:
+  - name: "Validated QuestionPlan/AnswerOutput"
+    type: "versioned-model-output"
+    destination: "workflow service"
+
+acceptance_criteria:
+  - "Mock 通过 model-gateway.v1 返回结构化结果；真实 HTTP 适配器由 T-W1-004B 验收。"
+  - "模型只能返回 context_span_id/候选引用；最终 EvidenceSpan 由服务端物化。"
+  - "模型输出 Schema 无效、引用不存在或断言类型非法时不会发布为草稿结果。"
+  - "日志只含脱敏元数据和 hash，不含原文、token 或完整响应。"
+required_tests:
+  - "Mock 成功、无效 JSON、无效 context span、无证据、超时、失败和预算超限。"
+  - "服务端 context span 到 EvidenceSpan 物化和错误映射测试。"
+  - "PAPER_FACT、AUTHOR_CLAIM、AGENT_INFERENCE 和 INSUFFICIENT_EVIDENCE 测试。"
+manual_acceptance:
+  - "QA 逐项核对实际发送字段与隐私边界。"
+security_considerations:
+  - "论文文本为不可信输入，系统指令和 Schema 不可被其覆盖。"
+  - "T-W1-004A 不接收真实凭据；004B 的密钥只允许运行时环境/内存读取，不进入任务输入或日志。"
+risks:
+  - risk: "未来供应商响应格式或成本不稳定。"
+    mitigation: "本 Wave 不启用 provider；后续必须通过供应商 RFC、严格 Schema、预算阈值和可关闭配置。"
+rollback_plan: "保持 Mock 作为唯一 Wave 1 验收实现；未来 provider RFC 被拒绝时不影响核心闭环。"
+deliverables:
+  - "ModelGateway.v1 接口、Mock 和 provider seam。"
+  - "context span 输出验证、预算/错误处理和脱敏日志。"
+  - "模型集成测试与交接报告。"

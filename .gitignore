@@ -5,6 +5,8 @@ coverage/
 .env.*
 !.env.example
 *.log
+*.tsbuildinfo
+test-results/
 .DS_Store
 .idea/
 .vscode/
@@ -12,3 +14,9 @@ coverage/
 tmp/
 artifacts/
 worktrees/
+
+/docs/audits/wave1-integration/review-bundle/
+/docs/audits/wave1-integration/EXTERNAL-REVIEW-FILELIST.txt
+/docs/audits/wave1-integration/external-review-summary.md
+/docs/audits/wave1-integration/wave1-first-batch-external-review.zip
+/docs/audits/wave1-integration/wave1-first-batch-repair-review.zip

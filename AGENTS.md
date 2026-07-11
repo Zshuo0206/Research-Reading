@@ -54,3 +54,5 @@
 - 每个 Wave 结束时，主控 Agent 必须提交 `docs/templates/human-acceptance-summary.md` 格式的摘要；没有摘要不得请求产品层面验收。
 
 如果仓库文件与聊天中的旧方案冲突，以本仓库最新批准的文档为准；工程技术问题由主控/QA按制度处理；只有产品范围、重大事项或无法由既有规则处理的决策才提交人类项目负责人。
+
+每批业务任务结束后，执行 Agent 必须按照 `docs/process/external-review-handoff.md` 选择 Level 1/2/3 交接；默认使用摘要和 commit range，只有外部无法访问仓库/CI、存在重要未跟踪内容或明确要求时才生成 ZIP。执行 Agent 不得自行作出最终审核或 Gate 结论。

@@ -1,0 +1,59 @@
+task_id: T-W1-006A
+title: "基于 Wave 1 契约建立 Web 骨架和 PR smoke 入口"
+owner_role: frontend-agent
+status: DRAFT
+wave: 1
+
+objective: "在 API 实现前，基于冻结契约建立本地 loopback Web 页面骨架、状态展示和 Playwright smoke harness。"
+background: "契约稳定后，Web 骨架不应等待后端实现完成；它可以与存储、Mock 和评测资料并行。"
+scope:
+  - "消费 question-plan.v1、answer.v1、document.v1 和 job.v1 的类型/fixture。"
+  - "建立项目、导入、问题、回答、证据、loading/error/retry/success 的页面骨架。"
+  - "建立 loopback 启动、Mock API fixture 和 PR Playwright smoke 的测试入口。"
+out_of_scope:
+  - "真实 API 集成、真实 PDF、真实模型和业务闭环实现。"
+dependencies:
+  - task_id: T-W1-001
+    reason: "骨架必须只消费冻结契约，不自行发明字段。"
+  - task_id: T-W1-002
+    reason: "需要 Playwright 和 Node 24 CI 命令。"
+
+writable_paths:
+  - apps/web/**
+  - tests/e2e/web-skeleton/**
+read_only_paths:
+  - packages/contracts/wave1/**
+  - apps/api/**
+forbidden_paths:
+  - package.json
+  - packages/contracts/**
+  - apps/api/src/**
+contract_version: "api.v1 + document.v1 + job.v1 + question-plan.v1 + answer.v1"
+
+inputs:
+  - name: "Wave 1 contracts and deterministic fixtures"
+    type: "contract-fixtures"
+    source: "packages/contracts/wave1"
+outputs:
+  - name: "Web skeleton and PR smoke harness"
+    type: "browser-skeleton"
+    destination: "apps/web and tests/e2e/web-skeleton"
+
+acceptance_criteria:
+  - "页面状态和字段完全来自 wave1.v1 fixture，包含 review_status、verification_status 和 evidence context。"
+  - "Playwright smoke 可在本地 loopback + Mock fixture 下启动并验证导航、状态展示和错误重试。"
+  - "不调用真实 API、PDF 或外部模型，不产生用户数据。"
+required_tests:
+  - "契约 fixture 类型检查和页面状态测试。"
+  - "Playwright skeleton smoke。"
+manual_acceptance:
+  - "QA 验证 Web 骨架可在 T-W1-005 完成前独立运行。"
+security_considerations:
+  - "仅监听 127.0.0.1；fixture 不包含密钥、论文原文或真实用户数据。"
+risks:
+  - risk: "骨架字段与最终 API 漂移。"
+    mitigation: "契约 owner 先冻结；破坏性变化必须新版本和兼容测试。"
+rollback_plan: "独立回退 Web 骨架，不影响 API/Worker 和契约。"
+deliverables:
+  - "契约驱动 Web 骨架。"
+  - "PR Playwright smoke harness。"

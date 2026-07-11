@@ -1,7 +1,7 @@
 # Wave 1 Product Scope Summary
 
-状态：`CONDITIONALLY_APPROVED_NEEDS_FINAL_REVIEW`  
-当前动作：仅供人类项目负责人最终审核；不创建任务、不创建分支、不开始编码。
+状态：`PRODUCT_SCOPE_APPROVED_TECHNICAL_PLAN_PENDING_FREEZE`
+当前动作：产品范围已获人类项目负责人正式批准；允许技术方案、契约和任务规划，暂不开始真实业务编码。
 
 ## 产品目标
 
@@ -46,16 +46,19 @@
 - 模型：外部 ModelGateway + Mock。
 - 核心价值验证：问题驱动、证据回溯、用户确认。
 
-## 仍需技术论证
+## 技术方案状态
 
-- 技术栈、PDF 提取、ModelGateway、供应商候选、成本/隐私控制、Schema、评测集、CI 和 QA 执行方式。
+- 技术栈、PDF 提取、ModelGateway、成本/隐私控制、Schema、评测集、CI 和 QA 执行方式已形成提案，见 [`wave1-technical-plan.md`](D:/Research%20Reading/docs/architecture/wave1-technical-plan.md)。
+- 契约基线见 [`RFC-W1-001`](D:/Research%20Reading/docs/rfcs/RFC-W1-001-technical-foundation-and-contract-baseline.md)，当前为 `PROPOSED`，尚未冻结。
+- 开发任务已拆分为 `docs/tasks/backlog/T-W1-*.yaml`，全部保持 `DRAFT`，不代表编码授权。
+- Wave 1 验收使用可替换 Gateway 契约和确定性 Mock，并包含统一 OpenAI-compatible BYOK 适配器；真实外部调用只作为本地人工验收，不进入普通 CI。
 
-## 仍需人类决定
+## 本轮人工批准
 
-- 是否最终批准真实 PDF 和外部模型进入 Wave 1。
-- 是否认可主要指标和最小闭环。
-- 是否接受排除范围及外部模型的数据/成本边界。
+- 已批准真实可提取文本 PDF、外部 ModelGateway + Mock、最小闭环、主要指标和排除范围。
+- 已接受外部模型必须告知/同意、最小化发送、预算控制、脱敏和可关闭。
+- 平台不提供共享密钥；API Key 只来自环境变量或当前运行会话内存，不写 Git、SQLite、日志、审计、导出或 fixture；浏览器不得直连供应商。
 
-## 推荐结论
+## 当前结论
 
-有条件批准修订后的范围；完成最终审核和技术方案论证后，再决定是否创建 Wave 1 任务。当前不授权编码。
+产品范围正式通过；技术方案已提出并等待冻结检查。当前不授权真实业务编码，完成技术启动摘要后申请 Wave 1 编码启动。

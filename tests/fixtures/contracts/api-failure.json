@@ -1,0 +1,10 @@
+{
+  "schema_version": "api.v1",
+  "request_id": "req_failure_1",
+  "error": {
+    "code": "TIMEOUT",
+    "message": "The request timed out.",
+    "retryable": true,
+    "provider": "OPENAI"
+  }
+}

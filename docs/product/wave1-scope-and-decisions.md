@@ -1,11 +1,11 @@
 # Wave 1 Product Scope and Decision Topics
 
-状态：`CONDITIONALLY_APPROVED_NEEDS_REVISION`
-用途：根据产品审核意见修订后的范围草案；仍需最终审核，不授权创建实现任务、分支或 worktree。
+状态：`PRODUCT_SCOPE_APPROVED_TECHNICAL_PLAN_PENDING_FREEZE`
+用途：人类项目负责人已正式批准的 Wave 1 产品范围；允许技术方案、契约和任务规划，不授权开始真实业务编码。
 
 一页式摘要见：[wave1-product-scope-summary.md](D:/Research%20Reading/docs/product/wave1-product-scope-summary.md)
 
-## 一、已决定的产品范围
+## 一、已批准的产品范围
 
 ### 1. 产品定位
 
@@ -99,36 +99,41 @@ Wave 1 至少覆盖以下流程：
 - 自动判断创新性、研究空白或论文质量。
 - 未经再次审核的额外产品模块。
 
-## 六、仍需技术论证的事项
+## 六、技术方案状态
 
-以下事项由主控 Agent、QA Agent 和相关责任 Agent提出方案、验证和技术结论；不默认提交人类项目负责人逐项审核：
+技术角色已完成第一版论证，见 [`docs/architecture/wave1-technical-plan.md`](D:/Research%20Reading/docs/architecture/wave1-technical-plan.md)。当前建议采用 Node 22/TypeScript、Fastify、React/Vite、SQLite、内容寻址文件存储、按页 PDF 文本提取、独立 Worker、JSON Schema/Ajv 和可替换 ModelGateway。契约提案见 [`RFC-W1-001`](D:/Research%20Reading/docs/rfcs/RFC-W1-001-technical-foundation-and-contract-baseline.md)，当前为 `PROPOSED`，尚未冻结。
 
-- 前端/后端运行时与技术栈。
-- 外部模型供应商候选、ModelGateway 适配层和 Mock 策略。
-- PDF 文本提取、文件版本、稳定文本位置和不支持格式的识别策略。
-- 数据发送边界、日志脱敏、成本计量、预算阈值和外部服务失败处理。
-- 数据库、对象存储和异步任务是否需要进入 Wave 1。
-- API、错误模型、任务状态、答案类型和证据 Schema。
-- 固定评测论文的选择、人工基准和问题/回答评测方法。
-- formatter、lint、typecheck、依赖和安全工具的 CI 接入。
-- QA 的实际执行方式：独立 QA Agent，或与实现 Agent 分离的独立审查任务。
+技术方案已覆盖：
 
-只有当这些技术方案明显改变产品范围、隐私、成本或长期产品形态时，才需要提交人类项目负责人决定。
+- 前端/后端运行时与技术栈；
+- 外部模型适配层和 Mock 策略；
+- PDF 文本提取、文件版本、稳定文本位置和不支持格式识别；
+- 数据发送边界、日志脱敏、成本计量、预算阈值和外部服务失败处理；
+- 数据库、内容寻址文件存储和 SQLite job worker；
+- API、错误模型、任务状态、答案类型和证据 Schema；
+- 固定评测论文、人工基准、问题/回答评测方法；
+- formatter、lint、typecheck、依赖和安全工具的 CI 接入；
+- 独立 QA Agent、责任 Agent 局部检查和主控复跑方式。
 
-## 七、仍需人类项目负责人决定的事项
+实现解释：产品范围允许使用可替换的外部 `ModelGateway`，Wave 1 同时冻结版本化 Gateway 契约、确定性 Mock 和统一 OpenAI-compatible BYOK 适配器。OpenAI、Gemini、Groq、OpenRouter 以预设提供，自定义端点必须为 HTTPS；真实调用只进入人工验收，不进入普通 CI。模型设置页面属于后续 Web 闭环任务。
 
-1. 是否最终批准“个人单用户 Web 工作台”作为 Wave 1 产品形态。
-2. 是否最终批准真实 PDF 和外部模型进入 Wave 1。
-3. 是否认可“问题可用率”和“带证据回答的用户接受率”为主要产品指标。
-4. 外部模型数据发送和成本边界中，哪些风险可以接受，哪些必须禁止。
-5. 是否接受 Wave 1 只实现方法学习，其他模式延期。
-6. 是否接受本轮不实现正式资产库、导出、多篇综合和高级 Evidence 检索。
+## 七、本轮人工批准结论
 
-## 八、开始条件
+1. 正式批准“个人单用户 Web 工作台”作为 Wave 1 产品形态。
+2. 正式批准一篇真实、可直接提取文本的 PDF 和可替换外部 `ModelGateway` + Mock 进入 Wave 1。
+3. 正式认可“问题可用率”和“带证据回答的用户接受率”为主要产品指标。
+4. 正式接受外部模型必须经过用户告知/同意、最小发送、日志脱敏、预算阈值和失败处理。
+5. 正式接受 Wave 1 只实现方法学习，其他模式延期。
+6. 正式接受本轮不实现正式资产库、导出、多篇综合、高级 Evidence 检索、OCR、协作和插件。
 
-在以下条件完成前，不得创建 Wave 1 真实业务实现任务：
+后续只有在技术实现改变已批准闭环、扩大/缩小范围、显著改变论文隐私或持续成本、产生供应商锁定，或改变个人 Web 工作台长期定位时，才重新提交人类项目负责人决定。
 
-- 人类项目负责人最终确认本文件和一页式摘要中的产品范围。
-- 主控 Agent 将批准范围转化为 Wave 计划，并建立 ownership、契约版本、验收标准和回滚方案。
-- 技术角色完成 ModelGateway、PDF 输入、证据回溯、成本/隐私和评测方案论证。
-- QA 执行方式已明确，并写入 Wave 计划和任务验收标准。
+## 八、技术方案与编码启动条件
+
+在以下条件完成前，不得分配或开始 Wave 1 真实业务编码：
+
+- 人类项目负责人已确认本文件和一页式摘要中的产品范围（已完成）。
+- 主控 Agent 已建立技术方案、ownership、契约版本、任务、验收标准和回滚方案（已提出，待冻结）。
+- 技术角色已完成 ModelGateway、PDF 输入、证据回溯、成本/隐私和评测方案论证（已提出，待技术审查）。
+- QA 执行方式已明确为独立 QA Agent + 主控复跑，并写入技术方案和任务验收标准（已提出，待确认 owner）。
+- 技术方案、RFC 和契约基线冻结后，人类项目负责人还需单独明确允许开始 Wave 1 真实业务编码。

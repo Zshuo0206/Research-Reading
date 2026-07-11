@@ -1,0 +1,5 @@
+{
+  "schema_version": "api.v1",
+  "request_id": "req_success_1",
+  "data": { "status": "ok" }
+}

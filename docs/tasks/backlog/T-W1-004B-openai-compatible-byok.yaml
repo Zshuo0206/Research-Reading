@@ -1,0 +1,66 @@
+task_id: T-W1-004B
+title: "实现 OpenAI-compatible BYOK 适配器、预设与连接测试"
+owner_role: model-gateway-agent
+status: DRAFT
+wave: 1
+
+objective: "为用户自带 API Key 提供统一 OpenAI-compatible HTTP 适配器，支持预设、自定义端点和脱敏连接测试。"
+background: "Wave 1 必须支持真实模型生成问题计划和证据化回答；BYOK 密钥边界与 Mock/普通配置严格分离。"
+scope:
+  - "实现 OpenAI、Gemini、Groq、OpenRouter 预设和 CUSTOM_OPENAI_COMPATIBLE 自定义 HTTPS base_url。"
+  - "支持自定义模型名称、request_timeout_ms、max_input_characters、max_output_tokens。"
+  - "从环境变量或当前运行会话内存读取 API Key；连接测试只返回脱敏状态、延迟和统一错误码。"
+  - "将结构化问题计划/回答输出送入 model-gateway.v1、Answer/Evidence 验证；模型不得提交最终字符 offset。"
+out_of_scope:
+  - "平台共享密钥、SQLite 密钥持久化、操作系统密钥链、浏览器直连供应商。"
+  - "供应商 SDK、非 OpenAI-compatible 专用协议、远程部署、多用户认证。"
+dependencies:
+  - task_id: T-W1-001
+    reason: "provider 配置、secret ref、ModelGateway、Answer 和 Evidence 契约必须先冻结。"
+  - task_id: T-W1-002
+    reason: "需要 Node 24、测试、构建和 secret scan。"
+
+writable_paths:
+  - packages/model-gateway/**
+  - apps/api/src/model/**
+  - apps/worker/src/model/**
+  - tests/integration/model/**
+  - tests/fixtures/model/**
+read_only_paths:
+  - packages/contracts/wave1/**
+  - packages/pdf/**
+forbidden_paths:
+  - apps/web/**
+  - apps/api/src/persistence/**
+  - package.json
+contract_version: "model-gateway.v1 + answer.v1 + evidence.v1"
+
+inputs:
+  - name: "BYOK provider config、运行时 secret 和已校验 context spans"
+    type: "runtime-model-input"
+    source: "local API/worker"
+outputs:
+  - name: "脱敏连接测试结果与已校验结构化模型结果"
+    type: "validated-model-result"
+    destination: "workflow service"
+
+acceptance_criteria:
+  - "五种 provider 值合法；四种预设有固定 HTTPS base_url；custom 端点必须为 HTTPS。"
+  - "普通持久化配置 Schema 不含 api_key/apikey/secret 明文字段；secret 仅运行时输入。"
+  - "浏览器不直接调用供应商；超时、预算、4xx/5xx、无效 JSON 和无效 context 引用有统一错误映射。"
+  - "真实模型生成问题计划和回答属于人工验收；CI 只使用 deterministic Mock。"
+required_tests:
+  - "预设、custom base_url、模型名、超时/上限和连接测试脱敏。"
+  - "API Key 不进入持久化配置、日志、审计、导出或测试 fixture。"
+  - "结构化输出、证据引用、拒答和供应商失败错误映射。"
+manual_acceptance:
+  - "本地人工使用用户自有 Key 验证一次问题计划和一次带证据回答；记录 provider/model、脱敏状态和证据，不记录 Key/原文。"
+security_considerations:
+  - "API Key 不写 Git、SQLite、日志、审计或 fixture；应用重启后可要求重新输入。"
+risks:
+  - risk: "供应商兼容端点或数据保留策略变化。"
+    mitigation: "统一 adapter、连接测试、可关闭 provider、人工验收记录和明确发送边界。"
+rollback_plan: "关闭真实 provider，保留 Mock 作为 CI/无网络路径；不删除已有本地配置或契约。"
+deliverables:
+  - "OpenAI-compatible BYOK adapter、presets、connection test 和脱敏错误映射。"
+  - "人工真实模型验收记录与交接报告。"

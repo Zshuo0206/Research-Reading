@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-reading.local/contracts/model-gateway.v1.json",
+  "title": "Wave 1 ModelGateway discriminated BYOK contract",
+  "type": "object",
+  "required": ["schema_version", "operation", "provider_config", "input", "output"],
+  "properties": {
+    "schema_version": { "const": "model-gateway.v1" },
+    "operation": { "enum": ["GENERATE_QUESTION_PLAN", "GENERATE_ANSWER", "CONNECTION_TEST"] },
+    "provider_config": { "$ref": "#/$defs/provider_config" },
+    "runtime_secret_ref": { "$ref": "#/$defs/runtime_secret_ref" },
+    "input": {},
+    "output": {}
+  },
+  "allOf": [{
+    "oneOf": [
+      {
+        "properties": {
+          "operation": { "const": "GENERATE_QUESTION_PLAN" },
+          "input": { "$ref": "#/$defs/question_plan_input" },
+          "output": { "$ref": "https://research-reading.local/contracts/question-plan.v1.json" }
+        }
+      },
+      {
+        "properties": {
+          "operation": { "const": "GENERATE_ANSWER" },
+          "input": { "$ref": "#/$defs/answer_input" },
+          "output": { "$ref": "#/$defs/answer_output" }
+        }
+      },
+      {
+        "properties": {
+          "operation": { "const": "CONNECTION_TEST" },
+          "input": { "$ref": "#/$defs/connection_test_input" },
+          "output": { "$ref": "#/$defs/connection_test_output" }
+        }
+      }
+    ]
+  }],
+  "$defs": {
+    "provider_config": {
+      "type": "object",
+      "required": ["provider", "base_url", "model", "request_timeout_ms", "max_input_characters", "max_output_tokens"],
+      "properties": {
+        "provider": { "enum": ["OPENAI", "GEMINI", "GROQ", "OPENROUTER", "CUSTOM_OPENAI_COMPATIBLE"] },
+        "base_url": { "type": "string", "format": "uri", "pattern": "^https://[^?#]+$" },
+        "model": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "request_timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 120000 },
+        "max_input_characters": { "type": "integer", "minimum": 1, "maximum": 10000000 },
+        "max_output_tokens": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      },
+      "additionalProperties": false
+    },
+    "runtime_secret_ref": {
+      "type": "object",
+      "required": ["kind", "name"],
+      "properties": { "kind": { "const": "ENVIRONMENT" }, "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,127}$" } },
+      "additionalProperties": false
+    },
+    "document_metadata": {
+      "type": "object",
+      "required": ["document_version_id", "page_count"],
+      "properties": {
+        "document_version_id": { "type": "string", "pattern": "^docv_[A-Za-z0-9_-]+$" },
+        "page_count": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "context_spans": {
+      "type": "array",
+      "minItems": 0,
+      "items": { "$ref": "https://research-reading.local/contracts/evidence.v1.json#/$defs/context_span" }
+    },
+    "question_plan_input": {
+      "type": "object",
+      "required": ["document_metadata", "document_language", "method_learning_mode", "context_spans", "runtime_config_ref"],
+      "properties": {
+        "document_metadata": { "$ref": "#/$defs/document_metadata" },
+        "document_language": { "type": "string", "minLength": 2 },
+        "method_learning_mode": { "const": "METHOD_LEARNING" },
+        "context_spans": { "$ref": "#/$defs/context_spans" },
+        "runtime_config_ref": { "$ref": "#/$defs/runtime_secret_ref" }
+      },
+      "additionalProperties": false
+    },
+    "answer_input": {
+      "type": "object",
+      "required": ["confirmed_question_revision", "context_spans", "document_metadata"],
+      "properties": {
+        "confirmed_question_revision": { "type": "string", "pattern": "^qrev_[A-Za-z0-9_-]+$" },
+        "context_spans": { "$ref": "#/$defs/context_spans" },
+        "document_metadata": { "$ref": "#/$defs/document_metadata" }
+      },
+      "additionalProperties": false
+    },
+    "answer_output": {
+      "type": "object",
+      "required": ["status", "claims"],
+      "properties": {
+        "status": { "enum": ["SUCCESS", "INSUFFICIENT_EVIDENCE"] },
+        "claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["claim_id", "text", "claim_type", "candidate_context_span_ids"],
+            "properties": {
+              "claim_id": { "type": "string", "pattern": "^claim_[A-Za-z0-9_-]+$" },
+              "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+              "claim_type": { "enum": ["PAPER_FACT", "AUTHOR_CLAIM", "AGENT_INFERENCE", "INSUFFICIENT_EVIDENCE"] },
+              "candidate_context_span_ids": { "type": "array", "items": { "type": "string", "pattern": "^context_[A-Za-z0-9_-]+$" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "connection_test_input": {
+      "type": "object",
+      "required": ["probe"],
+      "properties": { "probe": { "const": true } },
+      "additionalProperties": false
+    },
+    "connection_test_output": {
+      "type": "object",
+      "required": ["success", "provider", "model"],
+      "properties": {
+        "success": { "type": "boolean" },
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "error_category": { "enum": ["AUTHENTICATION", "RATE_LIMIT", "TIMEOUT", "INVALID_RESPONSE", "UNAVAILABLE", "UNKNOWN"] },
+        "error_message": { "type": "string", "maxLength": 500 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

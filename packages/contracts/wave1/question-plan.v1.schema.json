@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-reading.local/contracts/question-plan.v1.json",
+  "title": "Wave 1 question plan and revisions",
+  "type": "object",
+  "required": ["schema_version", "question_plan_id", "document_version_id", "document_language", "retrieval_queries", "retrieval_terms", "questions"],
+  "properties": {
+    "schema_version": { "const": "question-plan.v1" },
+    "question_plan_id": { "type": "string", "pattern": "^qplan_[A-Za-z0-9_-]+$" },
+    "document_version_id": { "type": "string", "pattern": "^docv_[A-Za-z0-9_-]+$" },
+    "document_language": { "type": "string", "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$" },
+    "retrieval_queries": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 300 } },
+    "retrieval_terms": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 100 } },
+    "questions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/question" } }
+  },
+  "$defs": {
+    "question": {
+      "type": "object",
+      "required": ["question_id", "current_revision", "revisions", "review_status", "verification_status"],
+      "properties": {
+        "question_id": { "type": "string", "pattern": "^question_[A-Za-z0-9_-]+$" },
+        "current_revision": { "type": "string", "pattern": "^qrev_[A-Za-z0-9_-]+$" },
+        "revisions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/revision" } },
+        "review_status": { "enum": ["DRAFT", "CONFIRMED", "REJECTED"] },
+        "verification_status": { "const": "NOT_REQUIRED" }
+      },
+      "additionalProperties": false
+    },
+    "revision": {
+      "type": "object",
+      "required": ["revision_id", "revision_number", "created_by", "created_at", "content_hash", "text"],
+      "properties": {
+        "revision_id": { "type": "string", "pattern": "^qrev_[A-Za-z0-9_-]+$" },
+        "revision_number": { "type": "integer", "minimum": 1 },
+        "created_by": { "enum": ["MODEL", "LOCAL_OPERATOR"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "content_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "supersedes_revision_id": { "type": "string", "pattern": "^qrev_[A-Za-z0-9_-]+$" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@research-reading/api",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js",
+    "smoke": "node dist/server.js --smoke"
+  },
+  "dependencies": {
+    "fastify": "^5.3.3"
+  }
+}

@@ -1,0 +1,86 @@
+task_id: T-W1-008
+title: "执行 Wave 1 集成验收、回滚演练和编码后发布门槛"
+owner_role: orchestrator
+status: DRAFT
+wave: 1
+
+objective: "在所有实现任务完成后，按依赖顺序集成、重跑关键检查、核对范围和输出技术/人类验收摘要。"
+background: "责任 Agent 声称完成不等于验收；主控必须独立确认无越界、无绕过门槛且可恢复。"
+scope:
+  - "Gate B/C 通过后按契约→平台→存储/Job→PDF/Evidence→Mock Gateway→工作流→Web→评测顺序集成。"
+  - "重跑确定性 CI、迁移、PR smoke、闭环 E2E、安全和隐私边界检查。"
+  - "执行 Mock 失败、任务取消/重试、备份恢复和回滚演练；不要求真实外部 gateway。"
+  - "单独报告固定评测和用户接受率等产品观察指标，不把它们伪装成 CI 通过项。"
+  - "更新任务状态、CURRENT_STATE、devlog 和 Wave 人类验收摘要。"
+out_of_scope:
+  - "新增产品能力、修复未授权范围外问题或直接重写责任 Agent 模块。"
+dependencies:
+  - task_id: T-W1-001
+    reason: "所有集成必须基于接受的契约。"
+  - task_id: T-W1-002
+    reason: "需要完整 CI 门槛。"
+  - task_id: T-W1-003A
+    reason: "需要可恢复存储和 Job runtime。"
+  - task_id: T-W1-003B
+    reason: "需要可导入的文档和 Evidence。"
+  - task_id: T-W1-004A
+    reason: "需要 Mock/输出验证失败边界。"
+  - task_id: T-W1-004B
+    reason: "需要真实 BYOK adapter 的人工验收证据。"
+  - task_id: T-W1-005
+    reason: "需要闭环 API。"
+  - task_id: T-W1-006
+    reason: "需要用户可操作的 Web 闭环。"
+  - task_id: T-W1-006A
+    reason: "需要 PR smoke 和契约 Web 骨架。"
+  - task_id: T-W1-007
+    reason: "需要固定评测和独立 QA 证据。"
+
+writable_paths:
+  - docs/CURRENT_STATE.md
+  - docs/devlog/**
+  - docs/audits/wave1-integration/**
+  - docs/audits/wave1-technical-startup-summary.md
+  - docs/tasks/**
+read_only_paths:
+  - apps/**
+  - packages/**
+  - tests/**
+  - package.json
+forbidden_paths:
+  - docs/integration/ownership-map.yaml
+  - package-lock.json
+contract_version: "wave1.v1"
+
+inputs:
+  - name: "各任务交接、QA 报告和 CI 证据"
+    type: "technical-evidence"
+    source: "responsible agents and QA"
+outputs:
+  - name: "Wave 1 技术验收结论和人类验收摘要"
+    type: "acceptance-record"
+    destination: "docs/audits/** and docs/CURRENT_STATE.md"
+
+acceptance_criteria:
+  - "所有任务均按生命周期完成，没有 IN_PROGRESS 直接 DONE。"
+  - "关键门槛、失败/绕过项、批准例外和未执行项均有证据。"
+  - "完整闭环满足产品范围，未增加排除项。"
+  - "真实外部模型不是 Wave 1 验收前置；Mock 可重复，数据库/文件可恢复。"
+  - "三个 Gate 的证据分别记录，不能用实现完成替代技术冻结或编码授权。"
+  - "主控重新运行关键测试后才生成 Wave 人类验收摘要。"
+required_tests:
+  - "npm run ci、契约、迁移、PR smoke、E2E、安全和恢复演练。"
+  - "Mock 失败/预算超限、Job 取消/重试和一次扫描 PDF 负例。"
+  - "固定 eval 和用户接受率观察报告，明确不属于确定性 CI 门槛。"
+manual_acceptance:
+  - "人类项目负责人只依据摘要审核产品目标、范围、重大风险和是否进入下一阶段。"
+security_considerations:
+  - "验收证据脱敏，不把论文原文、密钥或供应商响应写入日志。"
+risks:
+  - risk: "集成阶段为赶进度绕过契约或 QA 门槛。"
+    mitigation: "主控逐项核对强制门槛，未批准例外不得进入技术验收。"
+rollback_plan: "停止集成到最近通过门槛的版本；恢复数据库和内容对象，关闭外部模型。"
+deliverables:
+  - "集成测试和回滚证据。"
+  - "Wave 1 技术验收记录。"
+  - "docs/templates/human-acceptance-summary.md 格式的人类验收摘要。"

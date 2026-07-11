@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-reading.local/contracts/error.v1.json",
+  "title": "Wave 1 unified error object",
+  "type": "object",
+  "required": ["code", "message", "retryable"],
+  "properties": {
+    "code": {
+      "enum": [
+        "VALIDATION_ERROR", "NOT_FOUND", "CONFLICT", "DEPENDENCY_UNAVAILABLE", "TIMEOUT",
+        "INTERNAL_ERROR", "INVALID_STATE_TRANSITION", "INVALID_EVIDENCE", "INSUFFICIENT_EVIDENCE",
+        "BUDGET_EXCEEDED", "SECRET_REQUIRED", "UNSUPPORTED_PROVIDER", "INVALID_BASE_URL"
+      ]
+    },
+    "message": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "retryable": { "type": "boolean" },
+    "details": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "provider": { "type": "string", "minLength": 1, "maxLength": 100 }
+  },
+  "additionalProperties": false
+}
