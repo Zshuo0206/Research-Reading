@@ -1,7 +1,7 @@
 task_id: T-DRY-A
 title: "Dry-run A — 生成无业务契约变更说明"
 owner_role: mock-contract-agent
-status: READY
+status: DONE
 wave: 0
 objective: "演练子 Agent 独立任务、worktree、交接和公共接口变更请求。"
 background: "任务只生成审计说明，不修改真实共享契约。"

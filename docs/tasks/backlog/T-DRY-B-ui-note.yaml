@@ -1,7 +1,7 @@
 task_id: T-DRY-B
 title: "Dry-run B — 生成无业务前端交接说明"
 owner_role: mock-ui-agent
-status: READY
+status: DONE
 wave: 0
 objective: "演练第二个独立任务、并行 ownership 和失败恢复记录。"
 background: "任务只生成审计说明，不修改真实前端。"
