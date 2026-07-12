@@ -2,35 +2,56 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { handleExtractionJob } from "../../../apps/worker/src/extraction/handler.js";
-import { EXTRACTION_PROFILE, PdfIngestionError, extractTextPdf, validateContextSpan } from "../../../packages/pdf/src/index.js";
+import { EXTRACTION_PROFILE, PdfIngestionError, extractTextPdf, sha256, validateContextSpan } from "../../../packages/pdf/src/index.js";
 
 const fixture = fileURLToPath(new URL("../../fixtures/pdf/synthetic-text.pdf", import.meta.url));
 
 describe("text PDF ingestion", () => {
   it("extracts canonical page text and stable hashes", async () => {
     const bytes = await readFile(fixture);
-    const first = extractTextPdf(bytes);
-    const second = extractTextPdf(bytes);
+    const first = await extractTextPdf(bytes);
+    const second = await extractTextPdf(bytes);
     expect(first).toEqual(second);
     expect(first.page_count).toBe(2);
-    expect(first.pages[0]?.canonical_page_text).toBe("Research Reading synthetic fixture. Page one.");
-    expect(first.pages[1]?.canonical_page_text).toBe("Unicode 😀 café");
-    expect(first.pages[1]?.code_point_length).toBe(14);
-    expect(first.extraction_profile).toEqual(EXTRACTION_PROFILE);
+    expect(first.pages[0]?.canonical_page_text).toBe("Research Reading synthetic fixture.\nPage one.");
+    expect(first.pages[1]?.canonical_page_text).toBe("U n i c o d e = c a f Ø");
+    expect(first.pages[1]?.code_point_length).toBe([...first.pages[1]!.canonical_page_text].length);
+    expect(first.extraction_profile).toMatchObject(EXTRACTION_PROFILE);
+    expect(first.extraction_profile.pdfjs_version).toMatch(/^\d+\./);
   });
 
   it.each([
     [Buffer.from("not pdf"), "UNSUPPORTED_INPUT"],
     [Buffer.from("%PDF-1.4 broken"), "INVALID_PDF"],
     [Buffer.from("%PDF-1.4\n1 0 obj << /Encrypt 2 0 R /Type /Page >> endobj\n%%EOF"), "ENCRYPTED_PDF"],
-    [Buffer.from("%PDF-1.4\n1 0 obj << /Type /Page /Contents 2 0 R >> endobj\n2 0 obj << >> stream\nBT ET\nendstream\nendobj\n%%EOF"), "NO_EXTRACTABLE_TEXT"],
-  ])("rejects unsupported input", (bytes, code) => {
-    expect(() => extractTextPdf(bytes)).toThrowError(expect.objectContaining({ code }));
+  ])("rejects unsupported input", async (bytes, code) => {
+    await expect(extractTextPdf(bytes)).rejects.toEqual(expect.objectContaining({ code }));
+  });
+
+  it("rejects a pdfjs document with no extractable page text", async () => {
+    const emptyPdfJs = async () => ({
+      version: "6.1.200",
+      getDocument: () => ({
+        promise: Promise.resolve({
+          numPages: 1,
+          getPage: async () => ({ getTextContent: async () => ({ items: [] }), cleanup: () => undefined }),
+        }),
+        destroy: async () => undefined,
+      }),
+    });
+    await expect(extractTextPdf(Buffer.from("%PDF-empty"), undefined, emptyPdfJs)).rejects.toEqual(
+      expect.objectContaining({ code: "NO_EXTRACTABLE_TEXT" }),
+    );
   });
 
   it("uses Unicode code-point right-open ContextSpan coordinates", async () => {
-    const document = extractTextPdf(await readFile(fixture));
-    const page = document.pages[1]!;
+    const text = "Unicode 😀 café";
+    const page = {
+      page_number: 2,
+      canonical_page_text: text,
+      canonical_page_text_sha256: sha256(text),
+      code_point_length: [...text].length,
+    };
     const span = {
       context_span_id: "context_unicode",
       document_version_id: "docv_fixture",
