@@ -15,7 +15,8 @@ describe("text PDF ingestion", () => {
     expect(first.page_count).toBe(2);
     expect(first.pages[0]?.canonical_page_text).toBe("Research Reading synthetic fixture.\nPage one.");
     expect(first.pages[1]?.canonical_page_text).toBe("U n i c o d e = c a f Ø");
-    expect(first.pages[1]?.code_point_length).toBe([...first.pages[1]!.canonical_page_text].length);
+    const unicodePage = first.pages[1];
+    expect(unicodePage?.code_point_length).toBe([...(unicodePage?.canonical_page_text ?? "")].length);
     expect(first.extraction_profile).toMatchObject(EXTRACTION_PROFILE);
     expect(first.extraction_profile.pdfjs_version).toMatch(/^\d+\./);
   });
