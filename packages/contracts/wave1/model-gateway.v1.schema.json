@@ -16,14 +16,28 @@
   "$defs": {
     "runtime_secret_ref": {
       "description": "Invocation-only reference to a runtime secret. It is never persisted and never contains a plaintext API key.",
-      "type": "object",
-      "required": ["kind", "name"],
-      "properties": {
-        "kind": { "const": "ENVIRONMENT" },
-        "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,127}$" }
-      },
-      "additionalProperties": false
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "name"],
+          "properties": {
+            "kind": { "const": "ENVIRONMENT" },
+            "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,127}$" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "handle"],
+          "properties": {
+            "kind": { "const": "SESSION_MEMORY" },
+            "handle": { "type": "string", "pattern": "^secret_session_[A-Za-z0-9_-]+$" }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
+    "provider": { "enum": ["OPENAI", "GEMINI", "GROQ", "OPENROUTER", "CUSTOM_OPENAI_COMPATIBLE", "MOCK"] },
     "byok_provider_config": {
       "type": "object",
       "required": ["provider", "base_url", "model", "request_timeout_ms", "max_input_characters", "max_output_tokens"],
@@ -63,6 +77,7 @@
     },
     "context_spans": {
       "type": "array",
+      "minItems": 1,
       "items": { "$ref": "https://research-reading.local/contracts/evidence.v1.json#/$defs/context_span" }
     },
     "question_plan_input": {
@@ -70,7 +85,7 @@
       "required": ["document_metadata", "document_language", "method_learning_mode", "context_spans"],
       "properties": {
         "document_metadata": { "$ref": "#/$defs/document_metadata" },
-        "document_language": { "type": "string", "minLength": 2 },
+        "document_language": { "$ref": "https://research-reading.local/contracts/question-plan.v1.json#/$defs/document_language" },
         "method_learning_mode": { "const": "METHOD_LEARNING" },
         "context_spans": { "$ref": "#/$defs/context_spans" }
       },
@@ -80,27 +95,27 @@
       "type": "object",
       "required": ["document_language", "retrieval_queries", "retrieval_terms", "questions"],
       "properties": {
-        "document_language": { "type": "string", "minLength": 2 },
-        "retrieval_queries": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
-        "retrieval_terms": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
-        "questions": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "object",
-            "required": ["text"],
-            "properties": { "text": { "type": "string", "minLength": 1, "maxLength": 1000 } },
-            "additionalProperties": false
-          }
-        }
+        "document_language": { "$ref": "https://research-reading.local/contracts/question-plan.v1.json#/$defs/document_language" },
+        "retrieval_queries": { "$ref": "https://research-reading.local/contracts/question-plan.v1.json#/$defs/retrieval_queries" },
+        "retrieval_terms": { "$ref": "https://research-reading.local/contracts/question-plan.v1.json#/$defs/retrieval_terms" },
+        "questions": { "type": "array", "minItems": 1, "maxItems": 12, "items": { "$ref": "https://research-reading.local/contracts/question-plan.v1.json#/$defs/question_draft" } }
       },
       "additionalProperties": false
     },
     "answer_input": {
       "type": "object",
-      "required": ["confirmed_question_revision", "context_spans", "document_metadata"],
+      "required": ["confirmed_question", "context_spans", "document_metadata"],
       "properties": {
-        "confirmed_question_revision": { "type": "string", "pattern": "^qrev_[A-Za-z0-9_-]+$" },
+        "confirmed_question": {
+          "type": "object",
+          "required": ["question_id", "revision_id", "text"],
+          "properties": {
+            "question_id": { "type": "string", "pattern": "^question_[A-Za-z0-9_-]+$" },
+            "revision_id": { "type": "string", "pattern": "^qrev_[A-Za-z0-9_-]+$" },
+            "text": { "$ref": "https://research-reading.local/contracts/question-plan.v1.json#/$defs/question_text" }
+          },
+          "additionalProperties": false
+        },
         "context_spans": { "$ref": "#/$defs/context_spans" },
         "document_metadata": { "$ref": "#/$defs/document_metadata" }
       },
@@ -166,7 +181,7 @@
       "required": ["success", "provider", "model"],
       "properties": {
         "success": { "const": true },
-        "provider": { "type": "string", "minLength": 1 },
+        "provider": { "$ref": "#/$defs/provider" },
         "model": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": false
@@ -176,7 +191,7 @@
       "required": ["success", "provider", "model", "error_category"],
       "properties": {
         "success": { "const": false },
-        "provider": { "type": "string", "minLength": 1 },
+        "provider": { "$ref": "#/$defs/provider" },
         "model": { "type": "string", "minLength": 1 },
         "error_category": { "enum": ["AUTHENTICATION", "RATE_LIMIT", "TIMEOUT", "INVALID_RESPONSE", "UNAVAILABLE", "UNKNOWN"] },
         "error_message": { "type": "string", "minLength": 1, "maxLength": 500 }

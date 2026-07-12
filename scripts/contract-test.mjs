@@ -93,6 +93,7 @@ rejects(
 const modelFixtureDir = path.join(fixtureDir, "model-gateway");
 for (const name of [
   "question-plan-request-valid.json",
+  "question-plan-session-request-valid.json",
   "question-plan-valid.json",
   "answer-request-valid.json",
   "answer-valid.json",
@@ -221,6 +222,162 @@ rejects(
 );
 rejects(
   "model-gateway.v1.schema.json",
+  {
+    ...baseModel,
+    runtime_secret_ref: { kind: "ENVIRONMENT" },
+  },
+  "environment secret ref must require a name",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...baseModel,
+    runtime_secret_ref: { kind: "SESSION_MEMORY" },
+  },
+  "session-memory secret ref must require a handle",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...baseModel,
+    runtime_secret_ref: {
+      kind: "SESSION_MEMORY",
+      handle: "secret_session_1",
+      api_key: "plaintext",
+    },
+  },
+  "runtime secret ref must reject plaintext key fields",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...baseModel,
+    runtime_secret_ref: { kind: "UNKNOWN", handle: "secret_session_1" },
+  },
+  "runtime secret ref must reject unknown kinds",
+);
+const mockAnswerRequest = JSON.parse(
+  fs.readFileSync(
+    path.join(modelFixtureDir, "answer-request-valid.json"),
+    "utf8",
+  ),
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...mockAnswerRequest,
+    runtime_secret_ref: { kind: "ENVIRONMENT", name: "MODEL_API_KEY" },
+  },
+  "mock request must not carry a runtime secret ref",
+);
+const onlyRevisionAnswerRequest = structuredClone(mockAnswerRequest);
+onlyRevisionAnswerRequest.input = { ...onlyRevisionAnswerRequest.input };
+delete onlyRevisionAnswerRequest.input.confirmed_question;
+onlyRevisionAnswerRequest.input.confirmed_question_revision = "qrev_1";
+rejects(
+  "model-gateway.v1.schema.json",
+  onlyRevisionAnswerRequest,
+  "answer request must include confirmed question text rather than revision ID alone",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...mockAnswerRequest,
+    input: {
+      ...mockAnswerRequest.input,
+      confirmed_question: {
+        ...mockAnswerRequest.input.confirmed_question,
+        text: "",
+      },
+    },
+  },
+  "confirmed question text must be non-empty",
+);
+const missingRevisionAnswerRequest = structuredClone(mockAnswerRequest);
+delete missingRevisionAnswerRequest.input.confirmed_question.revision_id;
+rejects(
+  "model-gateway.v1.schema.json",
+  missingRevisionAnswerRequest,
+  "confirmed question must retain revision ID",
+);
+const questionPlanRequest = JSON.parse(
+  fs.readFileSync(
+    path.join(modelFixtureDir, "question-plan-request-valid.json"),
+    "utf8",
+  ),
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...questionPlanRequest,
+    input: { ...questionPlanRequest.input, context_spans: [] },
+  },
+  "question plan request must include context spans",
+);
+const questionPlanResponse = JSON.parse(
+  fs.readFileSync(
+    path.join(modelFixtureDir, "question-plan-valid.json"),
+    "utf8",
+  ),
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...questionPlanResponse,
+    output: { ...questionPlanResponse.output, document_language: "english" },
+  },
+  "question plan draft must enforce the formal document-language pattern",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...questionPlanResponse,
+    output: {
+      ...questionPlanResponse.output,
+      retrieval_queries: ["x".repeat(301)],
+    },
+  },
+  "question plan draft must enforce retrieval-query length",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...questionPlanResponse,
+    output: {
+      ...questionPlanResponse.output,
+      retrieval_terms: ["x".repeat(101)],
+    },
+  },
+  "question plan draft must enforce retrieval-term length",
+);
+const materializedQuestionPlan = {
+  schema_version: "question-plan.v1",
+  question_plan_id: "qplan_1",
+  document_version_id: "docv_1",
+  document_language: questionPlanResponse.output.document_language,
+  retrieval_queries: questionPlanResponse.output.retrieval_queries,
+  retrieval_terms: questionPlanResponse.output.retrieval_terms,
+  questions: questionPlanResponse.output.questions.map((question, index) => ({
+    question_id: `question_${index + 1}`,
+    current_revision: `qrev_${index + 1}`,
+    revisions: [
+      {
+        revision_id: `qrev_${index + 1}`,
+        revision_number: 1,
+        created_by: "MODEL",
+        created_at: "2026-07-12T00:00:00Z",
+        content_hash:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        text: question.text,
+      },
+    ],
+    review_status: "DRAFT",
+    verification_status: "NOT_REQUIRED",
+  })),
+};
+validate("question-plan.v1.schema.json", materializedQuestionPlan);
+rejects(
+  "model-gateway.v1.schema.json",
   { ...baseModel, output: { success: true } },
   "request must reject response output",
 );
@@ -229,7 +386,16 @@ const answerResponse = JSON.parse(
 );
 rejects(
   "model-gateway.v1.schema.json",
-  { ...answerResponse, input: { confirmed_question_revision: "qrev_1" } },
+  {
+    ...answerResponse,
+    input: {
+      confirmed_question: {
+        question_id: "question_1",
+        revision_id: "qrev_1",
+        text: "What preprocessing steps were used?",
+      },
+    },
+  },
   "response must reject request input",
 );
 rejects(
@@ -326,6 +492,14 @@ rejects(
     output: { success: false, provider: "OPENAI", model: "test" },
   },
   "failed connection test must require an error category",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...connectionSuccess,
+    output: { ...connectionSuccess.output, provider: "UNLISTED_PROVIDER" },
+  },
+  "connection test provider must use the unified provider enum",
 );
 rejects(
   "wave1.v1.schema.json",

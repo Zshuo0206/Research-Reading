@@ -1,9 +1,14 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-const root = process.cwd();
-const skipAudit = process.argv.includes("--skip-audit");
+const args = process.argv.slice(2);
+const rootFlag = args.indexOf("--root");
+if (rootFlag >= 0 && !args[rootFlag + 1])
+  throw new Error("--root requires a directory");
+const root = path.resolve(rootFlag >= 0 ? args[rootFlag + 1] : process.cwd());
+const skipAudit = args.includes("--skip-audit");
 const ignoredDirectories = new Set([
   ".git",
   "node_modules",
@@ -40,19 +45,18 @@ const visit = (absolute) => {
 };
 visit(root);
 
-const textExtensions =
-  /\.(mjs|ts|tsx|js|jsx|json|md|yaml|yml|toml|env|example|txt|html|css|pem|key)$/i;
-const textFiles = allFiles.filter(
-  (file) => !ignoredFiles.has(path.basename(file)) && textExtensions.test(file),
-);
-const forbiddenFiles = allFiles.filter((file) => {
-  const base = path.basename(file);
-  return (
-    base === ".env" ||
-    /\.(pdf|sqlite|sqlite3|db)$/i.test(base) ||
-    /\.(pem|key|p12|pfx)$/i.test(base)
+const relativePath = (file) =>
+  path.relative(root, file).split(path.sep).join("/");
+const isTextFile = (file) =>
+  /\.(mjs|ts|tsx|js|jsx|json|md|yaml|yml|toml|env|example|txt|html|css)$/i.test(
+    file,
   );
-});
+const isAllowedEnvTemplate = (base) =>
+  base === ".env.example" || base === ".env.template";
+const isEnvFile = (base) => base === ".env" || base.startsWith(".env.");
+const textFiles = allFiles.filter(
+  (file) => !ignoredFiles.has(path.basename(file)) && isTextFile(file),
+);
 
 const rules = [
   ["OpenAI-style key", /sk-[A-Za-z0-9]{20,}/g],
@@ -71,18 +75,88 @@ for (const file of textFiles) {
     const match = rule.exec(content);
     if (match) {
       const line = content.slice(0, match.index).split(/\r?\n/).length;
-      findings.push({ file: path.relative(root, file), line, type });
+      findings.push({ file: relativePath(file), line, type });
     }
     rule.lastIndex = 0;
   }
 }
 
-for (const file of forbiddenFiles) {
-  console.error(
-    `[security] forbidden file ${path.relative(root, file)} (${path.basename(file)})`,
-  );
+const printForbidden = (file, reason) => {
+  console.error(`[security] forbidden ${reason} ${relativePath(file)}`);
   process.exitCode = 1;
+};
+
+for (const file of allFiles) {
+  const base = path.basename(file);
+  if (isEnvFile(base) && !isAllowedEnvTemplate(base))
+    printForbidden(file, "environment file");
+  if (/\.(sqlite|sqlite3|db)$/i.test(base))
+    printForbidden(file, "database file");
+  if (/\.(pem|key|p12|pfx)$/i.test(base))
+    printForbidden(file, "private-key file");
 }
+
+const pdfFixtureDirectory = path.join(root, "tests", "fixtures", "pdf");
+const pdfManifestPath = path.join(pdfFixtureDirectory, "manifest.json");
+const isWithin = (child, parent) => {
+  const relative = path.relative(parent, child);
+  return (
+    relative &&
+    !relative.startsWith(`..${path.sep}`) &&
+    relative !== ".." &&
+    !path.isAbsolute(relative)
+  );
+};
+const loadPdfManifest = () => {
+  if (!fs.existsSync(pdfManifestPath))
+    throw new Error(
+      "missing PDF fixture manifest tests/fixtures/pdf/manifest.json",
+    );
+  const manifest = JSON.parse(fs.readFileSync(pdfManifestPath, "utf8"));
+  if (
+    manifest.manifest_version !== "pdf-fixture-manifest.v1" ||
+    !Array.isArray(manifest.fixtures)
+  )
+    throw new Error("invalid PDF fixture manifest");
+  return manifest;
+};
+const isRedistributableFixture = (entry) =>
+  typeof entry.source === "string" &&
+  entry.source.length > 0 &&
+  typeof entry.sha256 === "string" &&
+  /^[a-f0-9]{64}$/i.test(entry.sha256) &&
+  typeof entry.license?.spdx_id === "string" &&
+  entry.license.spdx_id.length > 0 &&
+  entry.license.redistribution_allowed === true &&
+  ["SYNTHETIC", "CC0", "REDISTRIBUTABLE"].includes(
+    entry.license.redistribution_class,
+  );
+const pdfFiles = allFiles.filter((file) => /\.pdf$/i.test(file));
+let pdfManifest;
+try {
+  pdfManifest = loadPdfManifest();
+} catch (error) {
+  console.error(`[security] ${error.message}`);
+  process.exitCode = 1;
+  pdfManifest = { fixtures: [] };
+}
+for (const file of pdfFiles) {
+  if (!isWithin(file, pdfFixtureDirectory)) {
+    printForbidden(file, "PDF outside tests/fixtures/pdf");
+    continue;
+  }
+  const fixturePath = relativePath(file);
+  const entry = pdfManifest.fixtures.find(
+    (candidate) => candidate.fixture_path === fixturePath,
+  );
+  const hash = crypto
+    .createHash("sha256")
+    .update(fs.readFileSync(file))
+    .digest("hex");
+  if (!entry || !isRedistributableFixture(entry) || entry.sha256 !== hash)
+    printForbidden(file, "unregistered or unlicensed PDF fixture");
+}
+
 for (const finding of findings) {
   console.error(
     `[security] suspected ${finding.type} at ${finding.file}:${finding.line}`,
@@ -138,6 +212,6 @@ if (!skipAudit) {
 
 if (!process.exitCode) {
   console.log(
-    `[security] enumerated ${allFiles.length} files and scanned ${textFiles.length} text files; forbidden file, secret, dependency/license and audit checks completed${skipAudit ? " (audit skipped for scanner self-test)" : ""}`,
+    `[security] enumerated ${allFiles.length} files and scanned ${textFiles.length} text files; environment, PDF fixture, database, private-key, secret, dependency/license and audit checks completed${skipAudit ? " (audit skipped for scanner self-test)" : ""}`,
   );
 }

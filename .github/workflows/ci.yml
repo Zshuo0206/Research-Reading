@@ -14,5 +14,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: docker compose config
       - run: npx playwright install --with-deps chromium
       - run: npm run ci

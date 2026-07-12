@@ -1,4 +1,12 @@
-import type { ModelGatewayEnvelope } from "../../packages/contracts/wave1/src/index.js";
+import type {
+  ModelGatewayEnvelope,
+  RuntimeSecretRef,
+} from "../../packages/contracts/wave1/src/index.js";
+
+export function inspectSecret(secret: RuntimeSecretRef): string {
+  if (secret.kind === "SESSION_MEMORY") return secret.handle;
+  return secret.name;
+}
 
 export function inspectGatewayMessage(message: ModelGatewayEnvelope): string {
   if (message.message_kind === "REQUEST") {
@@ -8,7 +16,7 @@ export function inspectGatewayMessage(message: ModelGatewayEnvelope): string {
       case "GENERATE_QUESTION_PLAN":
         return message.input.document_language;
       case "GENERATE_ANSWER":
-        return message.input.confirmed_question_revision;
+        return message.input.confirmed_question.text;
       case "CONNECTION_TEST":
         return String(message.input.probe);
       default: {

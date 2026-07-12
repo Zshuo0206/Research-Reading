@@ -47,6 +47,7 @@ writable_paths:
   - apps/web/src/main.tsx
   - tests/e2e/platform-smoke.spec.ts
   - tests/platform/host-policy.test.ts
+  - tests/fixtures/pdf/manifest.json
 read_only_paths:
   - packages/contracts/**
   - docs/quality/**
@@ -78,6 +79,8 @@ acceptance_criteria:
   - "PR 级 Playwright smoke 是确定性合并门槛；产品接受率不进入 CI 阻断。"
   - "API、Worker、Web loopback 平台 shell 可构建并通过 platform smoke；业务页面和业务流程仍不实现。"
   - "容器模式只允许容器内部显式监听 0.0.0.0，宿主机端口仍仅发布到 127.0.0.1；普通本地模式拒绝非 loopback host。"
+  - "CI 在 npm ci 后执行 docker compose config；运行时 compose smoke 不作为无 Docker CLI 的本地阻断项。"
+  - "安全扫描必须拒绝实际 .env、数据库、私钥及未登记 PDF；只允许 tests/fixtures/pdf 中具有来源、许可证和 SHA-256 的可再分发 fixture。"
 required_tests:
   - "干净 npm ci 和全量 CI。"
   - "锁文件一致性、依赖漏洞和 secret scan。"

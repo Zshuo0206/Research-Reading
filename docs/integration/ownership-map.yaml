@@ -72,6 +72,7 @@ agents:
       - apps/web/src/main.tsx
       - tests/e2e/platform-smoke.spec.ts
       - tests/platform/host-policy.test.ts
+      - tests/fixtures/pdf/manifest.json
     read_only_paths:
       - packages/contracts/**
       - apps/api/src/projects/**
@@ -102,7 +103,7 @@ agents:
       - apps/worker/src/extraction/**
       - packages/pdf/**
       - tests/integration/documents/**
-      - tests/fixtures/pdf/**
+      - tests/fixtures/pdf/**/*.pdf
     read_only_paths:
       - packages/contracts/**
       - packages/storage/**

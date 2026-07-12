@@ -20,3 +20,4 @@ worktrees/
 /docs/audits/wave1-integration/external-review-summary.md
 /docs/audits/wave1-integration/wave1-first-batch-external-review.zip
 /docs/audits/wave1-integration/wave1-first-batch-repair-review.zip
+/tests/.security-scan-probe/

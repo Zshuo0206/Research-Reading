@@ -15,10 +15,13 @@ max_output_tokens: number
 /**
  * Invocation-only reference to a runtime secret. It is never persisted and never contains a plaintext API key.
  */
-runtime_secret_ref: {
+runtime_secret_ref: ({
 kind: "ENVIRONMENT"
 name: string
-}
+} | {
+kind: "SESSION_MEMORY"
+handle: string
+})
 input: {
 document_metadata: {
 document_version_id: string
@@ -26,7 +29,10 @@ page_count: number
 }
 document_language: string
 method_learning_mode: "METHOD_LEARNING"
-context_spans: {
+/**
+ * @minItems 1
+ */
+context_spans: [{
 context_span_id: string
 document_version_id: string
 page_number: number
@@ -35,7 +41,16 @@ char_end: number
 text: string
 page_text_sha256: string
 extraction_profile_version: string
-}[]
+}, ...({
+context_span_id: string
+document_version_id: string
+page_number: number
+char_start: number
+char_end: number
+text: string
+page_text_sha256: string
+extraction_profile_version: string
+})[]]
 }
 } | {
 schema_version: "model-gateway.v1"
@@ -52,7 +67,10 @@ page_count: number
 }
 document_language: string
 method_learning_mode: "METHOD_LEARNING"
-context_spans: {
+/**
+ * @minItems 1
+ */
+context_spans: [{
 context_span_id: string
 document_version_id: string
 page_number: number
@@ -61,7 +79,16 @@ char_end: number
 text: string
 page_text_sha256: string
 extraction_profile_version: string
-}[]
+}, ...({
+context_span_id: string
+document_version_id: string
+page_number: number
+char_start: number
+char_end: number
+text: string
+page_text_sha256: string
+extraction_profile_version: string
+})[]]
 }
 } | {
 schema_version: "model-gateway.v1"
@@ -71,20 +98,175 @@ output: {
 document_language: string
 /**
  * @minItems 1
+ * @maxItems 12
  */
-retrieval_queries: [string, ...(string)[]]
+retrieval_queries: [string]|[string, string]|[string, string, string]|[string, string, string, string]|[string, string, string, string, string]|[string, string, string, string, string, string]|[string, string, string, string, string, string, string]|[string, string, string, string, string, string, string, string]|[string, string, string, string, string, string, string, string, string]|[string, string, string, string, string, string, string, string, string, string]|[string, string, string, string, string, string, string, string, string, string, string]|[string, string, string, string, string, string, string, string, string, string, string, string]
 /**
  * @minItems 1
+ * @maxItems 30
  */
 retrieval_terms: [string, ...(string)[]]
 /**
  * @minItems 1
+ * @maxItems 12
  */
 questions: [{
 text: string
-}, ...({
+}]|[{
 text: string
-})[]]
+}, {
+text: string
+}]|[{
+text: string
+}, {
+text: string
+}, {
+text: string
+}]|[{
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}]|[{
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}]|[{
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}]|[{
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}]|[{
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}]|[{
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}]|[{
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}]|[{
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}]|[{
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}, {
+text: string
+}]
 }
 } | {
 schema_version: "model-gateway.v1"
@@ -101,13 +283,23 @@ max_output_tokens: number
 /**
  * Invocation-only reference to a runtime secret. It is never persisted and never contains a plaintext API key.
  */
-runtime_secret_ref: {
+runtime_secret_ref: ({
 kind: "ENVIRONMENT"
 name: string
-}
+} | {
+kind: "SESSION_MEMORY"
+handle: string
+})
 input: {
-confirmed_question_revision: string
-context_spans: {
+confirmed_question: {
+question_id: string
+revision_id: string
+text: string
+}
+/**
+ * @minItems 1
+ */
+context_spans: [{
 context_span_id: string
 document_version_id: string
 page_number: number
@@ -116,7 +308,16 @@ char_end: number
 text: string
 page_text_sha256: string
 extraction_profile_version: string
-}[]
+}, ...({
+context_span_id: string
+document_version_id: string
+page_number: number
+char_start: number
+char_end: number
+text: string
+page_text_sha256: string
+extraction_profile_version: string
+})[]]
 document_metadata: {
 document_version_id: string
 page_count: number
@@ -131,8 +332,15 @@ provider: "MOCK"
 fixture_id: string
 }
 input: {
-confirmed_question_revision: string
-context_spans: {
+confirmed_question: {
+question_id: string
+revision_id: string
+text: string
+}
+/**
+ * @minItems 1
+ */
+context_spans: [{
 context_span_id: string
 document_version_id: string
 page_number: number
@@ -141,7 +349,16 @@ char_end: number
 text: string
 page_text_sha256: string
 extraction_profile_version: string
-}[]
+}, ...({
+context_span_id: string
+document_version_id: string
+page_number: number
+char_start: number
+char_end: number
+text: string
+page_text_sha256: string
+extraction_profile_version: string
+})[]]
 document_metadata: {
 document_version_id: string
 page_count: number
@@ -201,10 +418,13 @@ max_output_tokens: number
 /**
  * Invocation-only reference to a runtime secret. It is never persisted and never contains a plaintext API key.
  */
-runtime_secret_ref: {
+runtime_secret_ref: ({
 kind: "ENVIRONMENT"
 name: string
-}
+} | {
+kind: "SESSION_MEMORY"
+handle: string
+})
 input: {
 probe: true
 }
@@ -225,11 +445,11 @@ message_kind: "RESPONSE"
 operation: "CONNECTION_TEST"
 output: ({
 success: true
-provider: string
+provider: ("OPENAI" | "GEMINI" | "GROQ" | "OPENROUTER" | "CUSTOM_OPENAI_COMPATIBLE" | "MOCK")
 model: string
 } | {
 success: false
-provider: string
+provider: ("OPENAI" | "GEMINI" | "GROQ" | "OPENROUTER" | "CUSTOM_OPENAI_COMPATIBLE" | "MOCK")
 model: string
 error_category: ("AUTHENTICATION" | "RATE_LIMIT" | "TIMEOUT" | "INVALID_RESPONSE" | "UNAVAILABLE" | "UNKNOWN")
 error_message?: string

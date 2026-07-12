@@ -1,0 +1,13 @@
+{
+  "schema_version": "model-gateway.v1",
+  "message_kind": "REQUEST",
+  "operation": "GENERATE_QUESTION_PLAN",
+  "provider_config": { "provider": "GROQ", "base_url": "https://api.groq.com/openai/v1", "model": "test-model", "request_timeout_ms": 30000, "max_input_characters": 1000, "max_output_tokens": 100 },
+  "runtime_secret_ref": { "kind": "SESSION_MEMORY", "handle": "secret_session_test_1" },
+  "input": {
+    "document_metadata": { "document_version_id": "docv_1", "page_count": 1 },
+    "document_language": "en",
+    "method_learning_mode": "METHOD_LEARNING",
+    "context_spans": [{ "context_span_id": "context_1", "document_version_id": "docv_1", "page_number": 1, "char_start": 0, "char_end": 12, "text": "Method text.", "page_text_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "extraction_profile_version": "pdfjs-text-v1" }]
+  }
+}
