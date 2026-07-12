@@ -1,4 +1,12 @@
 {
   "manifest_version": "pdf-fixture-manifest.v1",
-  "fixtures": []
+  "fixtures": [
+    {
+      "file": "synthetic-text.pdf",
+      "source": "tests/fixtures/pdf/source/generate-fixtures.mjs",
+      "license": "CC0-1.0",
+      "sha256_file": "synthetic-text.sha256",
+      "purpose": "Minimal two-page extractable text PDF for deterministic ingestion, hashing, and Unicode coordinate tests"
+    }
+  ]
 }
