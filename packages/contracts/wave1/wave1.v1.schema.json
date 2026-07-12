@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-reading.local/contracts/wave1.v1.json",
+  "title": "Research Reading Wave 1 contract registry",
+  "type": "object",
+  "required": ["schema_version", "contracts"],
+  "properties": {
+    "schema_version": { "const": "wave1.v1" },
+    "contracts": {
+      "type": "array",
+      "minItems": 7,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "api.v1",
+          "document.v1",
+          "job.v1",
+          "question-plan.v1",
+          "answer.v1",
+          "evidence.v1",
+          "model-gateway.v1"
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}

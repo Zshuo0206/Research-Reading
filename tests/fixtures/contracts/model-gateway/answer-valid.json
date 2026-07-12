@@ -1,0 +1,9 @@
+{
+  "schema_version": "model-gateway.v1",
+  "message_kind": "RESPONSE",
+  "operation": "GENERATE_ANSWER",
+  "output": {
+    "status": "SUCCESS",
+    "claims": [{ "text": "The method is evaluated.", "claim_type": "PAPER_FACT", "candidate_context_span_ids": ["context_1"] }]
+  }
+}

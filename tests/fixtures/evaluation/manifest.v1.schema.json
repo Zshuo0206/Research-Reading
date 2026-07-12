@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-reading.local/evaluation/manifest.v1.json",
+  "title": "Licensed evaluation manifest v1",
+  "type": "object",
+  "required": ["manifest_version", "dataset_id", "samples"],
+  "properties": {
+    "manifest_version": { "const": "evaluation-manifest.v1" },
+    "dataset_id": { "type": "string", "pattern": "^eval_[a-z0-9_-]+$" },
+    "samples": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/sample" } }
+  },
+  "$defs": {
+    "sample": {
+      "type": "object",
+      "required": ["sample_id", "kind", "source", "license", "sha256", "page_count", "extraction_profile", "reference"],
+      "properties": {
+        "sample_id": { "type": "string", "pattern": "^sample_[a-z0-9_-]+$" },
+        "kind": { "enum": ["TEXT_PDF", "TWO_COLUMN_PDF", "SCANNED_NEGATIVE", "UNANSWERABLE"] },
+        "source": { "$ref": "#/$defs/source" },
+        "license": { "$ref": "#/$defs/license" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "page_count": { "type": "integer", "minimum": 0, "maximum": 300 },
+        "extraction_profile": { "type": ["string", "null"] },
+        "fixture_path": { "type": "string", "pattern": "^tests/fixtures/evaluation/" },
+        "reference": { "$ref": "#/$defs/reference" }
+      },
+      "allOf": [{
+        "if": { "properties": { "kind": { "const": "SCANNED_NEGATIVE" } } },
+        "then": { "properties": { "extraction_profile": { "type": "null" } } }
+      }],
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": ["title", "url", "retrieved_at", "publisher_or_repository"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "retrieved_at": { "type": "string", "format": "date-time" },
+        "publisher_or_repository": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "license": {
+      "type": "object",
+      "required": ["spdx_id", "evidence_url", "redistribution_allowed", "notes"],
+      "properties": {
+        "spdx_id": { "type": "string", "minLength": 1 },
+        "evidence_url": { "type": "string", "format": "uri" },
+        "redistribution_allowed": { "const": false },
+        "notes": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "reference": {
+      "type": "object",
+      "required": ["answerability", "questions", "answers", "evidence", "rejection_reason"],
+      "properties": {
+        "answerability": { "enum": ["ANSWERABLE", "UNANSWERABLE"] },
+        "questions": { "type": "array", "items": { "$ref": "#/$defs/reference_question" } },
+        "answers": { "type": "array", "items": { "$ref": "#/$defs/reference_answer" } },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/reference_evidence" } },
+        "rejection_reason": { "type": ["string", "null"] }
+      },
+      "allOf": [
+        { "if": { "properties": { "answerability": { "const": "UNANSWERABLE" } } }, "then": { "properties": { "rejection_reason": {} }, "required": ["rejection_reason"] } },
+        { "if": { "properties": { "answerability": { "const": "ANSWERABLE" } } }, "then": { "properties": { "answers": { "type": "array", "minItems": 1 }, "questions": { "type": "array", "minItems": 1 }, "evidence": { "type": "array", "minItems": 1 }, "rejection_reason": { "type": "null" } } } }
+      ],
+      "additionalProperties": false
+    },
+    "reference_question": {
+      "type": "object",
+      "required": ["question_id", "text", "review_status"],
+      "properties": { "question_id": { "type": "string" }, "text": { "type": "string", "minLength": 1 }, "review_status": { "const": "CONFIRMED" } },
+      "additionalProperties": false
+    },
+    "reference_answer": {
+      "type": "object",
+      "required": ["question_id", "text", "claim_types", "review_status", "verification_status"],
+      "properties": { "question_id": { "type": "string" }, "text": { "type": "string", "minLength": 1 }, "claim_types": { "type": "array", "items": { "enum": ["PAPER_FACT", "AUTHOR_CLAIM", "AGENT_INFERENCE", "INSUFFICIENT_EVIDENCE"] } }, "review_status": { "const": "CONFIRMED" }, "verification_status": { "const": "VERIFIED" } },
+      "additionalProperties": false
+    },
+    "reference_evidence": {
+      "type": "object",
+      "required": ["page_number", "char_start", "char_end", "quote", "canonical_page_text_sha256"],
+      "properties": { "page_number": { "type": "integer", "minimum": 1 }, "char_start": { "type": "integer", "minimum": 0 }, "char_end": { "type": "integer", "minimum": 1 }, "quote": { "type": "string", "minLength": 1 }, "canonical_page_text_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" } },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

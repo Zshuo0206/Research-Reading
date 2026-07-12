@@ -1,0 +1,532 @@
+import fs from "node:fs";
+import path from "node:path";
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
+
+const root = process.cwd();
+const contractDir = path.join(root, "packages", "contracts", "wave1");
+const fixtureDir = path.join(root, "tests", "fixtures", "contracts");
+const schemaFiles = fs
+  .readdirSync(contractDir)
+  .filter((name) => name.endsWith(".schema.json"))
+  .sort();
+const ajv = new Ajv2020({
+  allErrors: true,
+  strict: true,
+  allowUnionTypes: true,
+});
+addFormats(ajv);
+const assert = (condition, message) => {
+  if (!condition) throw new Error(message);
+};
+for (const name of schemaFiles) {
+  const schema = JSON.parse(
+    fs.readFileSync(path.join(contractDir, name), "utf8"),
+  );
+  ajv.addSchema(schema, name);
+}
+for (const name of schemaFiles) {
+  assert(ajv.getSchema(name), `schema ${name} was not registered`);
+}
+const validate = (schemaFile, value) => {
+  const check = ajv.getSchema(schemaFile);
+  assert(check, `missing schema ${schemaFile}`);
+  const valid = check(value);
+  assert(
+    valid,
+    `${schemaFile} rejected fixture: ${JSON.stringify(check.errors)}`,
+  );
+};
+const rejects = (schemaFile, value, message) => {
+  const check = ajv.getSchema(schemaFile);
+  assert(check && !check(value), message);
+};
+
+for (const name of schemaFiles) {
+  const schema = JSON.parse(
+    fs.readFileSync(path.join(contractDir, name), "utf8"),
+  );
+  assert(schema.$id?.includes(".v1"), `${name} must have a versioned $id`);
+}
+
+validate(
+  "api.v1.schema.json",
+  JSON.parse(
+    fs.readFileSync(path.join(fixtureDir, "api-success.json"), "utf8"),
+  ),
+);
+validate(
+  "api.v1.schema.json",
+  JSON.parse(
+    fs.readFileSync(path.join(fixtureDir, "api-failure.json"), "utf8"),
+  ),
+);
+const apiBase = { schema_version: "api.v1", request_id: "req_invalid" };
+rejects(
+  "api.v1.schema.json",
+  {
+    ...apiBase,
+    data: {},
+    error: { code: "TIMEOUT", message: "x", retryable: true },
+  },
+  "API envelope must reject data and error together",
+);
+rejects(
+  "api.v1.schema.json",
+  apiBase,
+  "API envelope must reject data and error omission",
+);
+rejects(
+  "api.v1.schema.json",
+  { ...apiBase, error: { code: "TIMEOUT", message: "x" } },
+  "error object must require retryable",
+);
+rejects(
+  "api.v1.schema.json",
+  {
+    ...apiBase,
+    error: { error: { code: "TIMEOUT", message: "x", retryable: true } },
+  },
+  "API envelope must not accept error.error wrapping",
+);
+
+const modelFixtureDir = path.join(fixtureDir, "model-gateway");
+for (const name of [
+  "question-plan-request-valid.json",
+  "question-plan-session-request-valid.json",
+  "question-plan-valid.json",
+  "answer-request-valid.json",
+  "answer-valid.json",
+  "connection-test-request-valid.json",
+  "connection-test-valid.json",
+]) {
+  validate(
+    "model-gateway.v1.schema.json",
+    JSON.parse(fs.readFileSync(path.join(modelFixtureDir, name), "utf8")),
+  );
+}
+for (const name of [
+  "question-plan-invalid.json",
+  "answer-invalid.json",
+  "connection-test-invalid.json",
+]) {
+  rejects(
+    "model-gateway.v1.schema.json",
+    JSON.parse(fs.readFileSync(path.join(modelFixtureDir, name), "utf8")),
+    `${name} must be rejected`,
+  );
+}
+
+const validContext = {
+  context_span_id: "context_1",
+  document_version_id: "docv_1",
+  page_number: 1,
+  char_start: 0,
+  char_end: 12,
+  text: "Method text.",
+  page_text_sha256:
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  extraction_profile_version: "pdfjs-text-v1",
+};
+validate("evidence.v1.schema.json", {
+  schema_version: "evidence.v1",
+  spans: [validContext],
+});
+const invalidInterval = { ...validContext, char_end: 0 };
+rejects(
+  "evidence.v1.schema.json",
+  { schema_version: "evidence.v1", spans: [invalidInterval] },
+  "context span must reject non-positive end",
+);
+const answer = {
+  schema_version: "answer.v1",
+  answer_id: "answer_1",
+  question_id: "question_1",
+  current_revision: "arev_1",
+  review_status: "DRAFT",
+  verification_status: "PENDING",
+  revisions: [
+    {
+      revision_id: "arev_1",
+      revision_number: 1,
+      created_by: "MODEL",
+      created_at: "2026-01-01T00:00:00Z",
+      content_hash:
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      claims: [
+        {
+          claim_id: "claim_1",
+          text: "Supported fact",
+          claim_type: "PAPER_FACT",
+          evidence_refs: ["evidence_1"],
+        },
+      ],
+    },
+  ],
+};
+validate("answer.v1.schema.json", answer);
+rejects(
+  "answer.v1.schema.json",
+  {
+    ...answer,
+    revisions: [
+      {
+        ...answer.revisions[0],
+        claims: [
+          { ...answer.revisions[0].claims[0], evidence_refs: ["context_1"] },
+        ],
+      },
+    ],
+  },
+  "final Answer must reject context span IDs",
+);
+const modelDirectOffset = JSON.parse(
+  fs.readFileSync(path.join(modelFixtureDir, "answer-valid.json"), "utf8"),
+);
+modelDirectOffset.output.claims[0].char_start = 0;
+rejects(
+  "model-gateway.v1.schema.json",
+  modelDirectOffset,
+  "ModelGateway output must reject final character offsets",
+);
+
+const baseModel = {
+  schema_version: "model-gateway.v1",
+  message_kind: "REQUEST",
+  operation: "CONNECTION_TEST",
+  provider_config: {
+    provider: "OPENAI",
+    base_url: "https://api.openai.com/v1",
+    model: "test",
+    request_timeout_ms: 1000,
+    max_input_characters: 100,
+    max_output_tokens: 10,
+  },
+  runtime_secret_ref: { kind: "ENVIRONMENT", name: "MODEL_API_KEY" },
+  input: { probe: true },
+};
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...baseModel,
+    provider_config: { ...baseModel.provider_config, api_key: "plaintext" },
+  },
+  "plaintext API key must fail persisted config",
+);
+const byokWithoutSecret = structuredClone(baseModel);
+delete byokWithoutSecret.runtime_secret_ref;
+rejects(
+  "model-gateway.v1.schema.json",
+  byokWithoutSecret,
+  "BYOK request must require the single runtime secret reference",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...baseModel,
+    runtime_secret_ref: { kind: "ENVIRONMENT" },
+  },
+  "environment secret ref must require a name",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...baseModel,
+    runtime_secret_ref: { kind: "SESSION_MEMORY" },
+  },
+  "session-memory secret ref must require a handle",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...baseModel,
+    runtime_secret_ref: {
+      kind: "SESSION_MEMORY",
+      handle: "secret_session_1",
+      api_key: "plaintext",
+    },
+  },
+  "runtime secret ref must reject plaintext key fields",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...baseModel,
+    runtime_secret_ref: { kind: "UNKNOWN", handle: "secret_session_1" },
+  },
+  "runtime secret ref must reject unknown kinds",
+);
+const mockAnswerRequest = JSON.parse(
+  fs.readFileSync(
+    path.join(modelFixtureDir, "answer-request-valid.json"),
+    "utf8",
+  ),
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...mockAnswerRequest,
+    runtime_secret_ref: { kind: "ENVIRONMENT", name: "MODEL_API_KEY" },
+  },
+  "mock request must not carry a runtime secret ref",
+);
+const onlyRevisionAnswerRequest = structuredClone(mockAnswerRequest);
+onlyRevisionAnswerRequest.input = { ...onlyRevisionAnswerRequest.input };
+delete onlyRevisionAnswerRequest.input.confirmed_question;
+onlyRevisionAnswerRequest.input.confirmed_question_revision = "qrev_1";
+rejects(
+  "model-gateway.v1.schema.json",
+  onlyRevisionAnswerRequest,
+  "answer request must include confirmed question text rather than revision ID alone",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...mockAnswerRequest,
+    input: {
+      ...mockAnswerRequest.input,
+      confirmed_question: {
+        ...mockAnswerRequest.input.confirmed_question,
+        text: "",
+      },
+    },
+  },
+  "confirmed question text must be non-empty",
+);
+const missingRevisionAnswerRequest = structuredClone(mockAnswerRequest);
+delete missingRevisionAnswerRequest.input.confirmed_question.revision_id;
+rejects(
+  "model-gateway.v1.schema.json",
+  missingRevisionAnswerRequest,
+  "confirmed question must retain revision ID",
+);
+const questionPlanRequest = JSON.parse(
+  fs.readFileSync(
+    path.join(modelFixtureDir, "question-plan-request-valid.json"),
+    "utf8",
+  ),
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...questionPlanRequest,
+    input: { ...questionPlanRequest.input, context_spans: [] },
+  },
+  "question plan request must include context spans",
+);
+const questionPlanResponse = JSON.parse(
+  fs.readFileSync(
+    path.join(modelFixtureDir, "question-plan-valid.json"),
+    "utf8",
+  ),
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...questionPlanResponse,
+    output: { ...questionPlanResponse.output, document_language: "english" },
+  },
+  "question plan draft must enforce the formal document-language pattern",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...questionPlanResponse,
+    output: {
+      ...questionPlanResponse.output,
+      retrieval_queries: ["x".repeat(301)],
+    },
+  },
+  "question plan draft must enforce retrieval-query length",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...questionPlanResponse,
+    output: {
+      ...questionPlanResponse.output,
+      retrieval_terms: ["x".repeat(101)],
+    },
+  },
+  "question plan draft must enforce retrieval-term length",
+);
+const materializedQuestionPlan = {
+  schema_version: "question-plan.v1",
+  question_plan_id: "qplan_1",
+  document_version_id: "docv_1",
+  document_language: questionPlanResponse.output.document_language,
+  retrieval_queries: questionPlanResponse.output.retrieval_queries,
+  retrieval_terms: questionPlanResponse.output.retrieval_terms,
+  questions: questionPlanResponse.output.questions.map((question, index) => ({
+    question_id: `question_${index + 1}`,
+    current_revision: `qrev_${index + 1}`,
+    revisions: [
+      {
+        revision_id: `qrev_${index + 1}`,
+        revision_number: 1,
+        created_by: "MODEL",
+        created_at: "2026-07-12T00:00:00Z",
+        content_hash:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        text: question.text,
+      },
+    ],
+    review_status: "DRAFT",
+    verification_status: "NOT_REQUIRED",
+  })),
+};
+validate("question-plan.v1.schema.json", materializedQuestionPlan);
+rejects(
+  "model-gateway.v1.schema.json",
+  { ...baseModel, output: { success: true } },
+  "request must reject response output",
+);
+const answerResponse = JSON.parse(
+  fs.readFileSync(path.join(modelFixtureDir, "answer-valid.json"), "utf8"),
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...answerResponse,
+    input: {
+      confirmed_question: {
+        question_id: "question_1",
+        revision_id: "qrev_1",
+        text: "What preprocessing steps were used?",
+      },
+    },
+  },
+  "response must reject request input",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  { ...answerResponse, output: { status: "SUCCESS", claims: [] } },
+  "successful answer must contain at least one claim",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...answerResponse,
+    output: {
+      status: "SUCCESS",
+      claims: [
+        {
+          text: "Unsupported fact",
+          claim_type: "PAPER_FACT",
+          candidate_context_span_ids: [],
+        },
+      ],
+    },
+  },
+  "supported claim must contain a candidate context reference",
+);
+const insufficientResponse = {
+  schema_version: "model-gateway.v1",
+  message_kind: "RESPONSE",
+  operation: "GENERATE_ANSWER",
+  output: {
+    status: "INSUFFICIENT_EVIDENCE",
+    claims: [
+      {
+        text: "The supplied context is insufficient.",
+        claim_type: "INSUFFICIENT_EVIDENCE",
+        candidate_context_span_ids: [],
+      },
+    ],
+  },
+};
+validate("model-gateway.v1.schema.json", insufficientResponse);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...insufficientResponse,
+    output: {
+      ...insufficientResponse.output,
+      claims: [
+        {
+          ...insufficientResponse.output.claims[0],
+          candidate_context_span_ids: ["context_1"],
+        },
+      ],
+    },
+  },
+  "insufficient evidence claim must reject candidate references",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...insufficientResponse,
+    output: {
+      ...insufficientResponse.output,
+      claims: [
+        ...insufficientResponse.output.claims,
+        {
+          text: "Mixed fact",
+          claim_type: "PAPER_FACT",
+          candidate_context_span_ids: ["context_1"],
+        },
+      ],
+    },
+  },
+  "insufficient evidence status must not mix ordinary claims",
+);
+const connectionSuccess = {
+  schema_version: "model-gateway.v1",
+  message_kind: "RESPONSE",
+  operation: "CONNECTION_TEST",
+  output: { success: true, provider: "OPENAI", model: "test" },
+};
+validate("model-gateway.v1.schema.json", connectionSuccess);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...connectionSuccess,
+    output: { ...connectionSuccess.output, error_category: "UNKNOWN" },
+  },
+  "successful connection test must reject error fields",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...connectionSuccess,
+    output: { success: false, provider: "OPENAI", model: "test" },
+  },
+  "failed connection test must require an error category",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...connectionSuccess,
+    output: { ...connectionSuccess.output, provider: "UNLISTED_PROVIDER" },
+  },
+  "connection test provider must use the unified provider enum",
+);
+rejects(
+  "wave1.v1.schema.json",
+  { contracts: [] },
+  "missing schema version must fail",
+);
+rejects(
+  "job.v1.schema.json",
+  {
+    schema_version: "job.v1",
+    job_id: "job_1",
+    kind: "ANSWER_GENERATION",
+    state: "RETRYING",
+    attempt: 0,
+    max_attempts: 1,
+    created_at: "2026-01-01T00:00:00Z",
+  },
+  "illegal job state must fail",
+);
+assert(
+  Array.from("αβγ").length === 3,
+  "Unicode code point length must be three",
+);
+assert(
+  Array.from("αβγ").slice(0, 4).length === 3,
+  "Evidence helper boundary fixture must be deterministic",
+);
+console.log(
+  `[contract] compiled ${schemaFiles.length} schemas; API envelope, ContextSpan/EvidenceSpan, Answer refs, three gateway operations, positive/negative fixtures and boundary checks passed`,
+);

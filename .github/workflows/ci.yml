@@ -1,4 +1,4 @@
-name: wave0-ci
+name: wave1-ci
 
 on:
   push:
@@ -11,5 +11,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: docker compose config
+      - run: npx playwright install --with-deps chromium
       - run: npm run ci

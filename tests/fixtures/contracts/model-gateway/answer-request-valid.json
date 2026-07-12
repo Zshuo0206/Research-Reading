@@ -1,0 +1,11 @@
+{
+  "schema_version": "model-gateway.v1",
+  "message_kind": "REQUEST",
+  "operation": "GENERATE_ANSWER",
+  "provider_config": { "provider": "MOCK", "fixture_id": "answer-success" },
+  "input": {
+    "confirmed_question": { "question_id": "question_1", "revision_id": "qrev_1", "text": "What preprocessing steps were used?" },
+    "context_spans": [{ "context_span_id": "context_1", "document_version_id": "docv_1", "page_number": 1, "char_start": 0, "char_end": 12, "text": "Method text.", "page_text_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "extraction_profile_version": "pdfjs-text-v1" }],
+    "document_metadata": { "document_version_id": "docv_1", "page_count": 1 }
+  }
+}

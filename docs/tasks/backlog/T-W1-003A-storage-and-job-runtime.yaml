@@ -1,0 +1,70 @@
+task_id: T-W1-003A
+title: "实现 SQLite 存储、文件对象和 Job 运行时基础"
+owner_role: storage-job-agent
+status: DRAFT
+wave: 1
+
+objective: "建立本地 SQLite/WAL 数据存储、内容寻址文件对象和可恢复 Job runtime；不实现 PDF 解析或产品工作流。"
+background: "原 T-W1-003 同时覆盖存储、Job、PDF 和 Evidence，范围过大；本任务先提供可复用的持久化和任务执行边界。"
+scope:
+  - "实现 SQLite migrations、WAL/busy_timeout/foreign_keys 参数和 repository 接口。"
+  - "实现内容寻址对象键、原始二进制 hash、临时文件 finally 清理和启动 sweeper。"
+  - "实现 Job 状态、原子 claim、lease 续租、attempt、退避、取消、崩溃恢复和 checkpoint/backup hooks。"
+out_of_scope:
+  - "PDF 解析、canonical_page_text、EvidenceSpan 物化和模型调用。"
+  - "真实外部队列、远程部署和多用户认证。"
+dependencies:
+  - task_id: T-W1-001
+    reason: "Job、document metadata 和错误状态必须遵守冻结契约。"
+  - task_id: T-W1-002
+    reason: "需要已冻结的 Node 24、迁移、测试和 CI 命令。"
+
+writable_paths:
+  - apps/api/migrations/**
+  - apps/api/src/persistence/**
+  - apps/worker/src/runtime/**
+  - packages/storage/**
+  - tests/integration/storage/**
+  - tests/integration/jobs/**
+read_only_paths:
+  - packages/contracts/wave1/**
+  - docs/architecture/wave1-technical-plan.md
+forbidden_paths:
+  - packages/pdf/**
+  - apps/api/src/document-ingest/**
+  - apps/api/src/model/**
+  - apps/web/**
+contract_version: "document.v1 + job.v1"
+
+inputs:
+  - name: "版本化契约和本地工作区配置"
+    type: "contract-and-config"
+    source: "packages/contracts/wave1 and local filesystem"
+outputs:
+  - name: "可恢复 SQLite/文件/Job runtime"
+    type: "persistence-runtime"
+    destination: "SQLite WAL + content-addressed storage"
+
+acceptance_criteria:
+  - "SQLite 初始化设置 WAL、foreign_keys、5 秒 busy timeout，并通过空库/上一版本迁移测试。"
+  - "Job claim 使用事务原子更新；lease 60 秒、20 秒续租、过期恢复和 attempt/退避可验证。"
+  - "Job 取消、失败、重试、崩溃恢复和终态迁移与 job.v1 一致。"
+  - "原始对象以二进制 SHA-256 内容寻址，临时文件成功/异常路径均清理。"
+  - "checkpoint、online backup 和启动 integrity 检查有可调用接口和测试。"
+required_tests:
+  - "WAL 并发读写、busy timeout、重复 claim、lease 续租和 Worker 崩溃恢复。"
+  - "空库/上一版本迁移、checkpoint、backup/restore 和临时 sweeper。"
+  - "幂等键、防重复副作用和终态重试冲突。"
+manual_acceptance:
+  - "QA 独立验证 Job 迁移表与实际实现一致。"
+security_considerations:
+  - "数据目录和临时目录使用本地操作系统权限，不允许用户路径拼接对象键。"
+  - "日志不输出原始 PDF、完整文本、密钥或内部路径。"
+risks:
+  - risk: "SQLite 锁竞争或崩溃导致重复任务。"
+    mitigation: "WAL、busy timeout、BEGIN IMMEDIATE、唯一幂等键、lease 和恢复测试。"
+rollback_plan: "停止 Worker，恢复最近一致备份；迁移失败事务回滚或使用前向修复，不强制 reset。"
+deliverables:
+  - "SQLite migrations、repository、object store 和 Job runtime。"
+  - "WAL/claim/lease/recovery/checkpoint 测试。"
+  - "storage-job owner 交接报告。"

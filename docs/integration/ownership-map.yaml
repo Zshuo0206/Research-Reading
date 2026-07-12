@@ -1,59 +1,171 @@
-wave: 0
-purpose: "Wave 0 governance and mock dry-run ownership"
+wave: 1
+purpose: "Wave 1 first-batch implementation ownership; only T-W1-001, T-W1-002 and T-W1-007 are unlocked by the recorded human startup decision"
 generated_at_utc: "2026-07-11T00:00:00Z"
+repair_branch: "repair/wave1-first-batch"
+repair_status: "pending_independent_review"
 rules:
   one_writer_per_file: true
   public_contract_paths_locked: true
   child_agents_cannot_merge: true
+  draft_tasks_do_not_authorize_coding: true
+  gate_a_does_not_unlock_tasks: true
+  first_batch_unlocked_tasks: []
+  first_batch_repair_tasks:
+    - T-W1-001
+    - T-W1-002
+    - T-W1-007
 agents:
   orchestrator:
-    role: main_control
+    role: main_control_and_wave_documentation
     writable_paths:
       - docs/CURRENT_STATE.md
       - docs/devlog/**
-      - docs/audits/**
+      - docs/architecture/**
+      - docs/product/**
+      - docs/tasks/**
+      - docs/audits/wave1-technical-startup-summary.md
+      - docs/audits/wave1-integration/**
+      - docs/integration/ownership-map.yaml
     read_only_paths:
       - apps/**
       - packages/**
-  governance-agent:
-    role: governance_documentation
-    writable_paths:
-      - docs/governance/**
-      - docs/templates/**
-      - docs/standards/**
-      - docs/quality/**
-      - docs/runbooks/**
-    read_only_paths:
-      - AGENTS.md
-      - docs/CURRENT_STATE.md
-  mock-contract-agent:
-    role: dry_run_contract_owner
-    writable_paths:
-      - docs/audits/dry-run-contract.md
-    read_only_paths:
-      - packages/contracts/**
-  mock-ui-agent:
-    role: dry_run_ui_owner
-    writable_paths:
-      - docs/audits/dry-run-ui.md
-    read_only_paths:
-      - apps/web/**
-  skeleton-agent:
-    role: placeholder_skeleton_owner
-    writable_paths:
-      - apps/**
-      - packages/contracts/**
-      - scripts/**
       - tests/**
-      - docker-compose.yml
-      - package.json
-      - .env.example
-      - .gitignore
-      - .github/**
+  contract-agent:
+    role: public_contract_and_schema_owner
+    writable_paths:
+      - packages/contracts/wave1/**
+      - docs/contracts/**
+      - tests/contracts/**
     read_only_paths:
-      - docs/**
+      - apps/**
+      - packages/model-gateway/**
+      - package.json
+      - package-lock.json
+  platform-agent:
+    role: runtime_dependency_and_ci_owner
+    writable_paths:
+      - package.json
+      - package-lock.json
+      - .npmrc
+      - .nvmrc
+      - .dockerignore
+      - tsconfig*.json
+      - biome.json
+      - scripts/**
+      - .github/**
+      - .env.example
+      - infra/**
+      - compose.yaml
+      - playwright.config.ts
+      - apps/api/package.json
+      - apps/api/tsconfig.json
+      - apps/api/src/server.ts
+      - apps/api/src/host-policy.ts
+      - apps/worker/package.json
+      - apps/worker/tsconfig.json
+      - apps/worker/src/worker.ts
+      - apps/web/package.json
+      - apps/web/tsconfig.json
+      - apps/web/vite.config.ts
+      - apps/web/host-policy.ts
+      - apps/web/index.html
+      - apps/web/src/main.tsx
+      - tests/e2e/platform-smoke.spec.ts
+      - tests/platform/host-policy.test.ts
+      - tests/fixtures/pdf/manifest.json
+    read_only_paths:
+      - packages/contracts/**
+      - apps/api/src/projects/**
+      - apps/api/src/workflow/**
+      - apps/api/src/model/**
+      - apps/worker/src/runtime/**
+      - apps/worker/src/model/**
+      - apps/web/src/features/**
+      - apps/web/src/pages/**
+  storage-job-agent:
+    role: sqlite_object_storage_and_job_runtime_owner
+    writable_paths:
+      - apps/api/migrations/**
+      - apps/api/src/persistence/**
+      - apps/worker/src/runtime/**
+      - packages/storage/**
+      - tests/integration/storage/**
+      - tests/integration/jobs/**
+    read_only_paths:
+      - packages/contracts/**
+      - packages/pdf/**
+      - apps/api/src/document-ingest/**
+      - apps/api/src/workflow/**
+  pdf-evidence-agent:
+    role: pdf_extraction_and_evidence_coordinate_owner
+    writable_paths:
+      - apps/api/src/document-ingest/**
+      - apps/worker/src/extraction/**
+      - packages/pdf/**
+      - tests/integration/documents/**
+      - tests/fixtures/pdf/**/*.pdf
+    read_only_paths:
+      - packages/contracts/**
+      - packages/storage/**
+      - apps/api/src/persistence/**
+      - apps/api/src/model/**
+  model-gateway-agent:
+    role: model_gateway_mock_output_validation_and_openai_compatible_byok_owner
+    writable_paths:
+      - packages/model-gateway/**
+      - apps/api/src/model/**
+      - apps/worker/src/model/**
+      - tests/integration/model/**
+      - tests/fixtures/model/**
+    read_only_paths:
+      - packages/contracts/**
+      - packages/pdf/**
+      - apps/web/**
+      - package.json
+  workflow-backend-agent:
+    role: project_and_reading_workflow_owner
+    writable_paths:
+      - apps/api/src/projects/**
+      - apps/api/src/workflow/**
+      - apps/api/src/http/**
+      - tests/integration/workflow/**
+      - tests/e2e/api/**
+    read_only_paths:
+      - packages/contracts/**
+      - packages/model-gateway/**
+      - packages/pdf/**
+      - apps/api/src/persistence/**
+      - apps/web/**
+  frontend-agent:
+    role: single_user_web_workbench_and_contract_skeleton_owner
+    writable_paths:
+      - apps/web/src/features/**
+      - apps/web/src/pages/**
+      - apps/web/src/components/business/**
+      - tests/e2e/web/**
+      - tests/e2e/web-skeleton/**
+    read_only_paths:
+      - packages/contracts/**
+      - apps/api/**
+      - package.json
+      - apps/web/package.json
+      - apps/web/tsconfig.json
+      - apps/web/vite.config.ts
+      - apps/web/host-policy.ts
+      - apps/web/index.html
+      - apps/web/src/main.tsx
+  qa-evaluation-agent:
+    role: independent_qa_and_evaluation_owner
+    writable_paths:
+      - tests/evaluation/**
+      - tests/fixtures/evaluation/**
+      - docs/evaluation/**
+      - docs/audits/wave1-qa/**
+    read_only_paths:
+      - apps/**
+      - packages/**
+      - package.json
+      - docs/CURRENT_STATE.md
 locked_paths:
   - docs/integration/ownership-map.yaml
-  - package-lock.json
-  - pnpm-lock.yaml
-  - yarn.lock
+  - docs/templates/**

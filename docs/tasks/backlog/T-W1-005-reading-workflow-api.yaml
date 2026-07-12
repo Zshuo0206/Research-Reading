@@ -1,0 +1,77 @@
+task_id: T-W1-005
+title: "实现方法学习问题计划与证据回答工作流 API"
+owner_role: workflow-backend-agent
+status: DRAFT
+wave: 1
+
+objective: "把项目、文档、问题计划、问题确认、回答生成、回答确认/修改/拒绝串成可恢复 API 闭环。"
+background: "产品核心闭环要求用户能够确认、修改或拒绝问题和回答，且未确认内容只能是草稿。"
+scope:
+  - "实现项目创建和 METHOD_LEARNING 模式约束。"
+  - "实现问题计划生成任务、问题确认/修改/拒绝和幂等写操作。"
+  - "实现至少一个确认问题的回答任务、证据展示和回答确认/修改/拒绝。"
+  - "实现统一错误模型、本地工作区 project binding 检查和审计事件。"
+out_of_scope:
+  - "其他阅读模式、资产库、导出、多篇综合和协作权限。"
+dependencies:
+  - task_id: T-W1-001
+    reason: "API 字段、错误和状态机必须先冻结。"
+  - task_id: T-W1-003A
+    reason: "需要持久化、Job runtime 和本地工作区绑定。"
+  - task_id: T-W1-003B
+    reason: "需要 READY document version、canonical text 和 Evidence 物化服务。"
+  - task_id: T-W1-004A
+    reason: "问题计划和回答由 ModelGateway 生成并验证。"
+  - task_id: T-W1-004B
+    reason: "Wave 1 真实 BYOK 生成路径需要统一 OpenAI-compatible adapter。"
+
+writable_paths:
+  - apps/api/src/projects/**
+  - apps/api/src/workflow/**
+  - apps/api/src/http/**
+  - tests/integration/workflow/**
+  - tests/e2e/api/**
+read_only_paths:
+  - packages/contracts/wave1/**
+  - packages/model-gateway/**
+  - packages/pdf/**
+forbidden_paths:
+  - apps/web/**
+  - apps/api/src/document-ingest/**
+  - apps/worker/src/extraction/**
+contract_version: "api.v1 + question-plan.v1 + answer.v1"
+
+inputs:
+  - name: "项目、文档和用户确认操作"
+    type: "versioned-api-request"
+    source: "Web or API test"
+outputs:
+  - name: "可观察的任务和草稿/确认结果"
+    type: "versioned-api-response"
+    destination: "Web, audit_events, SQLite"
+
+acceptance_criteria:
+  - "单用户可完成创建项目、导入 READY 文档、选择方法学习、生成问题计划。"
+  - "用户可确认、修改或拒绝问题，并只能为确认问题生成回答。"
+  - "回答展示至少一个服务端验证的 quote 和页码/稳定位置。"
+  - "问题和回答通过 revision、review_status、verification_status 表达编辑/验证；MODIFIED 不作为稳定状态。"
+  - "回答能区分三类断言；用户确认前不会标记为正式研究资产。"
+  - "重复写请求返回幂等结果，非法状态转换返回统一错误。"
+required_tests:
+  - "API 契约、状态机、幂等、本地工作区 project binding 和错误模型测试。"
+  - "Mock 端到端闭环测试。"
+  - "外部 gateway 关闭、失败、预算超限和无证据拒答测试。"
+manual_acceptance:
+  - "QA 从空库独立走通最小闭环并保存请求/响应证据。"
+security_considerations:
+  - "接口不泄露内部路径、堆栈、密钥或不必要的全文。"
+  - "本地操作员和 workspace-local project binding 由服务端检查；不宣称存在远程用户认证。"
+  - "草稿/确认/verification 状态由服务端决定，不能由客户端伪造。"
+risks:
+  - risk: "工作流过早抽象成资产库或多模式系统，扩大范围。"
+    mitigation: "只实现 METHOD_LEARNING 和最小状态机；扩展需新 RFC。"
+rollback_plan: "按契约版本回退 API/Worker；保留数据库迁移的前向修复，不删除用户文件。"
+deliverables:
+  - "项目与方法学习工作流 API。"
+  - "任务状态、审计和确认逻辑。"
+  - "闭环集成/E2E 测试。"

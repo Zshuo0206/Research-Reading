@@ -1,0 +1,12 @@
+{
+  "name": "@research-reading/worker",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/worker.js",
+    "smoke": "WORKER_SMOKE=1 node dist/worker.js"
+  }
+}

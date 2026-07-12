@@ -1,0 +1,100 @@
+task_id: T-W1-002
+title: "建立 Wave 1 TypeScript 平台与真实 CI 门槛"
+owner_role: platform-agent
+status: REVIEW
+wave: 1
+
+objective: "在不实现业务逻辑的前提下，把 Node 24 LTS/TypeScript、前后端构建和真实质量命令接入单仓库 CI。"
+background: "Wave 0 的 check.mjs 仅是结构占位；Wave 1 需要可执行的格式化、lint、类型、测试、构建、安全和契约门槛。"
+scope:
+  - "配置 TypeScript 严格模式、Biome、Vitest、Ajv 契约检查和应用构建命令。"
+  - "锁定依赖、Node 版本、npm 命令、CI 缓存和失败策略。"
+  - "保留健康检查并为 API、Worker、Web 提供可测试启动入口。"
+  - "将默认 API/Web 监听边界固定为 127.0.0.1；远程监听配置必须失败。"
+out_of_scope:
+  - "实现项目、PDF、模型、问题或回答业务。"
+  - "引入 Redis、PostgreSQL、云对象存储或供应商 SDK。"
+dependencies:
+  - task_id: T-W1-001
+    reason: "CI 必须先知道契约校验入口和版本目录。"
+
+writable_paths:
+  - package.json
+  - package-lock.json
+  - .npmrc
+  - .nvmrc
+  - .dockerignore
+  - tsconfig*.json
+  - biome.json
+  - scripts/**
+  - .github/**
+  - .env.example
+  - infra/**
+  - compose.yaml
+  - playwright.config.ts
+  - apps/api/package.json
+  - apps/api/tsconfig.json
+  - apps/api/src/server.ts
+  - apps/api/src/host-policy.ts
+  - apps/worker/package.json
+  - apps/worker/tsconfig.json
+  - apps/worker/src/worker.ts
+  - apps/web/package.json
+  - apps/web/tsconfig.json
+  - apps/web/vite.config.ts
+  - apps/web/host-policy.ts
+  - apps/web/index.html
+  - apps/web/src/main.tsx
+  - tests/e2e/platform-smoke.spec.ts
+  - tests/platform/host-policy.test.ts
+  - tests/fixtures/pdf/manifest.json
+read_only_paths:
+  - packages/contracts/**
+  - docs/quality/**
+forbidden_paths:
+  - apps/api/src/projects/**
+  - apps/api/src/workflow/**
+  - apps/api/src/model/**
+  - apps/worker/src/runtime/**
+  - apps/worker/src/model/**
+  - apps/web/src/features/**
+  - apps/web/src/pages/**
+contract_version: "wave1.v1"
+
+inputs:
+  - name: "契约入口"
+    type: "contract"
+    source: "packages/contracts/wave1/**"
+outputs:
+  - name: "可执行开发与 CI 命令"
+    type: "toolchain"
+    destination: "package.json/.github/scripts"
+
+acceptance_criteria:
+  - "npm ci 后 format、lint、typecheck、test、contract、build、security 命令均有明确结果。"
+  - "工具缺失或锁文件不一致会失败，不静默降级为占位通过。"
+  - "依赖来源、许可证、维护责任和版本进入交接记录；npm audit 与 license check 不静默跳过。"
+  - "CI 能在干净环境运行 Wave 1 契约和最小健康测试。"
+  - "Node 24 是 Wave 1 CI/runtime 目标；Node 22 仅作为 Wave 0 迁移基线；环境不是 Node 24 时命令明确失败。"
+  - "PR 级 Playwright smoke 是确定性合并门槛；产品接受率不进入 CI 阻断。"
+  - "API、Worker、Web loopback 平台 shell 可构建并通过 platform smoke；业务页面和业务流程仍不实现。"
+  - "容器模式只允许容器内部显式监听 0.0.0.0，宿主机端口仍仅发布到 127.0.0.1；普通本地模式拒绝非 loopback host。"
+  - "CI 在 npm ci 后执行 docker compose config；运行时 compose smoke 不作为无 Docker CLI 的本地阻断项。"
+  - "安全扫描必须拒绝实际 .env、数据库、私钥及未登记 PDF；只允许 tests/fixtures/pdf 中具有来源、许可证和 SHA-256 的可再分发 fixture。"
+required_tests:
+  - "干净 npm ci 和全量 CI。"
+  - "锁文件一致性、依赖漏洞和 secret scan。"
+  - "API、Worker、Web 构建烟雾测试。"
+manual_acceptance:
+  - "QA 独立复核 CI 是否真的执行每个必过门槛。"
+security_considerations:
+  - "密钥只来自环境变量；CI 日志不得打印 token。"
+  - "依赖高风险漏洞阻断构建或记录批准例外。"
+risks:
+  - risk: "新增依赖造成安装不稳定或供应商锁定。"
+    mitigation: "平台 owner 统一锁版本、记录许可证并优先使用已有运行时能力。"
+rollback_plan: "保留 Wave 0 检查作为可回退基线；若真实工具链不稳定，暂停集成，不修改业务代码。"
+deliverables:
+  - "平台配置和 lockfile。"
+  - "CI 工作流与命令说明。"
+  - "平台 owner 交接报告。"

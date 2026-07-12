@@ -1,0 +1,12 @@
+{
+  "schema_version": "model-gateway.v1",
+  "message_kind": "RESPONSE",
+  "operation": "CONNECTION_TEST",
+  "output": {
+    "success": false,
+    "provider": "CUSTOM_OPENAI_COMPATIBLE",
+    "model": "custom-model",
+    "error_category": "UNAVAILABLE",
+    "error_message": "Fixture response."
+  }
+}

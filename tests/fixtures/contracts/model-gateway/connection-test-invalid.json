@@ -1,0 +1,11 @@
+{
+  "schema_version": "model-gateway.v1",
+  "message_kind": "RESPONSE",
+  "operation": "CONNECTION_TEST",
+  "output": {
+    "success": true,
+    "provider": "OPENAI",
+    "model": "test-model",
+    "error_category": "UNKNOWN"
+  }
+}

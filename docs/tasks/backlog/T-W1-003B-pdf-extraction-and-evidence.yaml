@@ -1,0 +1,70 @@
+task_id: T-W1-003B
+title: "实现 PDF 资源限制、canonical 文本和 Evidence 坐标"
+owner_role: pdf-evidence-agent
+status: DRAFT
+wave: 1
+
+objective: "实现可提取文本 PDF 的输入限制、pdfjs-text-v1 提取 profile、canonical_page_text 和服务端 EvidenceSpan 验证。"
+background: "回答必须回溯到不可变文档版本和稳定位置；模型不得直接决定最终字符 offset。"
+scope:
+  - "实现 50 MiB、300 页、10,000,000 code points、30 秒和 256 MiB 资源边界。"
+  - "处理加密/损坏 PDF、临时文件清理和 UNSUPPORTED_INPUT/INVALID_PDF/EXTRACTION_TIMEOUT。"
+  - "实现 NFKC/LF/空白/无去连字符规则，以及 code point 右开区间和 canonical text UTF-8 SHA-256。"
+  - "实现 ContextSpan 到 EvidenceSpan 的服务端物化和 quote/hash 验证。"
+out_of_scope:
+  - "OCR、扫描 PDF、复杂表格/公式理解、高级检索和外部模型调用。"
+  - "SQLite migrations、Job claim 或 Web/API 工作流。"
+dependencies:
+  - task_id: T-W1-001
+    reason: "Evidence、document、job 和 ModelGateway 引用规则必须先冻结。"
+  - task_id: T-W1-002
+    reason: "需要已冻结的 Node 24、测试和资源监控命令。"
+
+writable_paths:
+  - apps/api/src/document-ingest/**
+  - apps/worker/src/extraction/**
+  - packages/pdf/**
+  - tests/integration/documents/**
+  - tests/fixtures/pdf/**
+read_only_paths:
+  - packages/contracts/wave1/**
+  - packages/model-gateway/**
+  - apps/api/src/persistence/**
+forbidden_paths:
+  - apps/api/migrations/**
+  - apps/api/src/model/**
+  - apps/web/**
+contract_version: "document.v1 + evidence.v1 + model-gateway.v1"
+
+inputs:
+  - name: "PDF 上传流和服务端 ContextSpan"
+    type: "binary-pdf/context-span"
+    source: "local API or test fixture"
+outputs:
+  - name: "DocumentVersion、canonical page text 和 validated EvidenceSpan"
+    type: "versioned-document-evidence"
+    destination: "storage-job runtime and workflow"
+
+acceptance_criteria:
+  - "合法文本 PDF 可按页提取并生成 immutable document version、profile 和 canonical text hash。"
+  - "扫描/无文本、加密、损坏、超页数、超文本量、超时和超内存输入均有稳定错误分类。"
+  - "offset 使用 Unicode code points，区间为 [start,end)，quote 是精确子串，hash 是 canonical text UTF-8 bytes 的小写 SHA-256。"
+  - "服务端只能从 context_span_id 物化 EvidenceSpan；模型/客户端不能直接提交最终 char offset。"
+  - "重复输入和重复处理不会产生重复不可逆对象。"
+required_tests:
+  - "真实文本、双栏、扫描负例、加密、损坏、超限和临时清理测试。"
+  - "Unicode surrogate/组合字符、右开区间、quote/hash 不匹配和 profile 版本测试。"
+  - "context_span_id 不存在、跨页、越界和候选 quote 不匹配测试。"
+manual_acceptance:
+  - "QA 独立复核 canonical_page_text、offset 单位、hash 编码和 Evidence 物化证据。"
+security_considerations:
+  - "PDF 和文本只作为不可信数据，不得改变系统指令或工具调用。"
+  - "临时文件异常路径必须清理，日志不得输出原文。"
+risks:
+  - risk: "pdfjs 版本或文本 item 顺序变化导致坐标不稳定。"
+    mitigation: "冻结 profile/version，immutable document version 和 canonical hash；升级产生新版本。"
+rollback_plan: "停用新 extraction profile，保留原文件和旧 document version；不删除旧 Evidence。"
+deliverables:
+  - "PDF 输入/提取和 Evidence 物化模块。"
+  - "资源边界、Unicode 坐标和失败分类测试。"
+  - "pdf-evidence owner 交接报告。"

@@ -1,0 +1,11 @@
+{
+  "schema_version": "model-gateway.v1",
+  "message_kind": "RESPONSE",
+  "operation": "GENERATE_QUESTION_PLAN",
+  "output": {
+    "document_language": "en",
+    "retrieval_queries": ["method evaluation"],
+    "retrieval_terms": ["method"],
+    "questions": [{ "question_id": "question_1", "text": "What method is used?" }]
+  }
+}

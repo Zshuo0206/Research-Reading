@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-reading.local/contracts/api.v1.json",
+  "title": "Wave 1 API envelope",
+  "type": "object",
+  "required": ["schema_version", "request_id"],
+  "properties": {
+    "schema_version": { "const": "api.v1" },
+    "request_id": { "type": "string", "pattern": "^req_[A-Za-z0-9_-]+$" },
+    "data": {},
+    "error": { "$ref": "https://research-reading.local/contracts/error.v1.json" }
+  },
+  "additionalProperties": false,
+  "oneOf": [
+    { "properties": { "data": {} }, "required": ["data"], "not": { "properties": { "error": {} }, "required": ["error"] } },
+    { "properties": { "error": { "$ref": "https://research-reading.local/contracts/error.v1.json" } }, "required": ["error"], "not": { "properties": { "data": {} }, "required": ["data"] } }
+  ]
+}

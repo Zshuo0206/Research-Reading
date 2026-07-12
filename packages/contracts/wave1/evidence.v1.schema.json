@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-reading.local/contracts/evidence.v1.json",
+  "title": "Wave 1 context and evidence spans",
+  "type": "object",
+  "required": ["schema_version", "spans"],
+  "properties": {
+    "schema_version": { "const": "evidence.v1" },
+    "spans": { "type": "array", "items": { "oneOf": [{ "$ref": "#/$defs/context_span" }, { "$ref": "#/$defs/evidence_span" }] } }
+  },
+  "$defs": {
+    "context_span": {
+      "type": "object",
+      "required": ["context_span_id", "document_version_id", "page_number", "char_start", "char_end", "text", "page_text_sha256", "extraction_profile_version"],
+      "properties": {
+        "context_span_id": { "type": "string", "pattern": "^context_[A-Za-z0-9_-]+$" },
+        "document_version_id": { "type": "string", "pattern": "^docv_[A-Za-z0-9_-]+$" },
+        "page_number": { "type": "integer", "minimum": 1 },
+        "char_start": { "type": "integer", "minimum": 0 },
+        "char_end": { "type": "integer", "minimum": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "page_text_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "extraction_profile_version": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "evidence_span": {
+      "type": "object",
+      "required": ["evidence_span_id", "document_version_id", "page_number", "page_text_sha256", "extraction_profile_version", "char_start", "char_end", "quote", "verification_status"],
+      "properties": {
+        "evidence_span_id": { "type": "string", "pattern": "^evidence_[A-Za-z0-9_-]+$" },
+        "context_span_id": { "type": "string", "pattern": "^context_[A-Za-z0-9_-]+$" },
+        "document_version_id": { "type": "string", "pattern": "^docv_[A-Za-z0-9_-]+$" },
+        "page_number": { "type": "integer", "minimum": 1 },
+        "page_text_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "extraction_profile_version": { "type": "string", "minLength": 1 },
+        "char_start": { "type": "integer", "minimum": 0 },
+        "char_end": { "type": "integer", "minimum": 1 },
+        "quote": { "type": "string", "minLength": 1 },
+        "verification_status": { "enum": ["PENDING", "VERIFIED", "INVALID", "INSUFFICIENT_EVIDENCE"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
