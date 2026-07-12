@@ -12,6 +12,7 @@ if (fs.existsSync(probeDirectory) || fs.existsSync(probePdf))
   throw new Error("security scanner probe path already exists");
 
 const originalManifest = fs.readFileSync(manifestPath);
+const originalFixtures = JSON.parse(originalManifest.toString("utf8")).fixtures;
 const runScanner = () =>
   spawnSync(process.execPath, ["scripts/security-scan.mjs", "--skip-audit"], {
     cwd: root,
@@ -25,7 +26,7 @@ const expectRejected = (label) => {
 const writeManifest = (fixtures) =>
   fs.writeFileSync(
     manifestPath,
-    `${JSON.stringify({ manifest_version: "pdf-fixture-manifest.v1", fixtures }, null, 2)}\n`,
+    `${JSON.stringify({ manifest_version: "pdf-fixture-manifest.v1", fixtures: [...originalFixtures, ...fixtures] }, null, 2)}\n`,
   );
 
 try {
