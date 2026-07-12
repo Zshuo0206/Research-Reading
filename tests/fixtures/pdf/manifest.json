@@ -3,8 +3,14 @@
   "fixtures": [
     {
       "file": "synthetic-text.pdf",
+      "fixture_path": "tests/fixtures/pdf/synthetic-text.pdf",
       "source": "tests/fixtures/pdf/source/generate-fixtures.mjs",
-      "license": "CC0-1.0",
+      "license": {
+        "spdx_id": "CC0-1.0",
+        "redistribution_allowed": true,
+        "redistribution_class": "SYNTHETIC"
+      },
+      "sha256": "72fc92fd6de757cc58ab0b500f94dde7d9c683701161245e858e1a85c83b3d1f",
       "sha256_file": "synthetic-text.sha256",
       "purpose": "Minimal two-page extractable text PDF for deterministic ingestion, hashing, and Unicode coordinate tests"
     }
