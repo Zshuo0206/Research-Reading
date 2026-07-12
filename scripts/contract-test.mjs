@@ -92,8 +92,11 @@ rejects(
 
 const modelFixtureDir = path.join(fixtureDir, "model-gateway");
 for (const name of [
+  "question-plan-request-valid.json",
   "question-plan-valid.json",
+  "answer-request-valid.json",
   "answer-valid.json",
+  "connection-test-request-valid.json",
   "connection-test-valid.json",
 ]) {
   validate(
@@ -188,6 +191,7 @@ rejects(
 
 const baseModel = {
   schema_version: "model-gateway.v1",
+  message_kind: "REQUEST",
   operation: "CONNECTION_TEST",
   provider_config: {
     provider: "OPENAI",
@@ -197,8 +201,8 @@ const baseModel = {
     max_input_characters: 100,
     max_output_tokens: 10,
   },
+  runtime_secret_ref: { kind: "ENVIRONMENT", name: "MODEL_API_KEY" },
   input: { probe: true },
-  output: { success: true, provider: "OPENAI", model: "test" },
 };
 rejects(
   "model-gateway.v1.schema.json",
@@ -207,6 +211,121 @@ rejects(
     provider_config: { ...baseModel.provider_config, api_key: "plaintext" },
   },
   "plaintext API key must fail persisted config",
+);
+const byokWithoutSecret = structuredClone(baseModel);
+delete byokWithoutSecret.runtime_secret_ref;
+rejects(
+  "model-gateway.v1.schema.json",
+  byokWithoutSecret,
+  "BYOK request must require the single runtime secret reference",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  { ...baseModel, output: { success: true } },
+  "request must reject response output",
+);
+const answerResponse = JSON.parse(
+  fs.readFileSync(path.join(modelFixtureDir, "answer-valid.json"), "utf8"),
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  { ...answerResponse, input: { confirmed_question_revision: "qrev_1" } },
+  "response must reject request input",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  { ...answerResponse, output: { status: "SUCCESS", claims: [] } },
+  "successful answer must contain at least one claim",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...answerResponse,
+    output: {
+      status: "SUCCESS",
+      claims: [
+        {
+          text: "Unsupported fact",
+          claim_type: "PAPER_FACT",
+          candidate_context_span_ids: [],
+        },
+      ],
+    },
+  },
+  "supported claim must contain a candidate context reference",
+);
+const insufficientResponse = {
+  schema_version: "model-gateway.v1",
+  message_kind: "RESPONSE",
+  operation: "GENERATE_ANSWER",
+  output: {
+    status: "INSUFFICIENT_EVIDENCE",
+    claims: [
+      {
+        text: "The supplied context is insufficient.",
+        claim_type: "INSUFFICIENT_EVIDENCE",
+        candidate_context_span_ids: [],
+      },
+    ],
+  },
+};
+validate("model-gateway.v1.schema.json", insufficientResponse);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...insufficientResponse,
+    output: {
+      ...insufficientResponse.output,
+      claims: [
+        {
+          ...insufficientResponse.output.claims[0],
+          candidate_context_span_ids: ["context_1"],
+        },
+      ],
+    },
+  },
+  "insufficient evidence claim must reject candidate references",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...insufficientResponse,
+    output: {
+      ...insufficientResponse.output,
+      claims: [
+        ...insufficientResponse.output.claims,
+        {
+          text: "Mixed fact",
+          claim_type: "PAPER_FACT",
+          candidate_context_span_ids: ["context_1"],
+        },
+      ],
+    },
+  },
+  "insufficient evidence status must not mix ordinary claims",
+);
+const connectionSuccess = {
+  schema_version: "model-gateway.v1",
+  message_kind: "RESPONSE",
+  operation: "CONNECTION_TEST",
+  output: { success: true, provider: "OPENAI", model: "test" },
+};
+validate("model-gateway.v1.schema.json", connectionSuccess);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...connectionSuccess,
+    output: { ...connectionSuccess.output, error_category: "UNKNOWN" },
+  },
+  "successful connection test must reject error fields",
+);
+rejects(
+  "model-gateway.v1.schema.json",
+  {
+    ...connectionSuccess,
+    output: { success: false, provider: "OPENAI", model: "test" },
+  },
+  "failed connection test must require an error category",
 );
 rejects(
   "wave1.v1.schema.json",

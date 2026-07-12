@@ -1,7 +1,11 @@
 {
   "schema_version": "model-gateway.v1",
+  "message_kind": "RESPONSE",
   "operation": "CONNECTION_TEST",
-  "provider_config": { "provider": "OPENAI", "base_url": "http://insecure.example/v1", "model": "test-model", "request_timeout_ms": 1000, "max_input_characters": 100, "max_output_tokens": 10 },
-  "input": { "context_spans": [] },
-  "output": { "success": true, "provider": "OPENAI", "model": "test-model" }
+  "output": {
+    "success": true,
+    "provider": "OPENAI",
+    "model": "test-model",
+    "error_category": "UNKNOWN"
+  }
 }

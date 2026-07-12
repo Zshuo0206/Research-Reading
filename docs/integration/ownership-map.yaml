@@ -46,17 +46,41 @@ agents:
     writable_paths:
       - package.json
       - package-lock.json
+      - .npmrc
+      - .nvmrc
+      - .dockerignore
       - tsconfig*.json
       - biome.json
       - scripts/**
       - .github/**
       - .env.example
       - infra/**
+      - compose.yaml
+      - playwright.config.ts
+      - apps/api/package.json
+      - apps/api/tsconfig.json
+      - apps/api/src/server.ts
+      - apps/api/src/host-policy.ts
+      - apps/worker/package.json
+      - apps/worker/tsconfig.json
+      - apps/worker/src/worker.ts
+      - apps/web/package.json
+      - apps/web/tsconfig.json
+      - apps/web/vite.config.ts
+      - apps/web/host-policy.ts
+      - apps/web/index.html
+      - apps/web/src/main.tsx
+      - tests/e2e/platform-smoke.spec.ts
+      - tests/platform/host-policy.test.ts
     read_only_paths:
       - packages/contracts/**
-      - apps/api/src/**
-      - apps/worker/src/**
-      - apps/web/src/**
+      - apps/api/src/projects/**
+      - apps/api/src/workflow/**
+      - apps/api/src/model/**
+      - apps/worker/src/runtime/**
+      - apps/worker/src/model/**
+      - apps/web/src/features/**
+      - apps/web/src/pages/**
   storage-job-agent:
     role: sqlite_object_storage_and_job_runtime_owner
     writable_paths:
@@ -114,13 +138,21 @@ agents:
   frontend-agent:
     role: single_user_web_workbench_and_contract_skeleton_owner
     writable_paths:
-      - apps/web/**
+      - apps/web/src/features/**
+      - apps/web/src/pages/**
+      - apps/web/src/components/business/**
       - tests/e2e/web/**
       - tests/e2e/web-skeleton/**
     read_only_paths:
       - packages/contracts/**
       - apps/api/**
       - package.json
+      - apps/web/package.json
+      - apps/web/tsconfig.json
+      - apps/web/vite.config.ts
+      - apps/web/host-policy.ts
+      - apps/web/index.html
+      - apps/web/src/main.tsx
   qa-evaluation-agent:
     role: independent_qa_and_evaluation_owner
     writable_paths:

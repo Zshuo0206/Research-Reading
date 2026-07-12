@@ -1,44 +1,30 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://research-reading.local/contracts/model-gateway.v1.json",
-  "title": "Wave 1 ModelGateway discriminated BYOK contract",
-  "type": "object",
-  "required": ["schema_version", "operation", "provider_config", "input", "output"],
-  "properties": {
-    "schema_version": { "const": "model-gateway.v1" },
-    "operation": { "enum": ["GENERATE_QUESTION_PLAN", "GENERATE_ANSWER", "CONNECTION_TEST"] },
-    "provider_config": { "$ref": "#/$defs/provider_config" },
-    "runtime_secret_ref": { "$ref": "#/$defs/runtime_secret_ref" },
-    "input": {},
-    "output": {}
-  },
-  "allOf": [{
-    "oneOf": [
-      {
-        "properties": {
-          "operation": { "const": "GENERATE_QUESTION_PLAN" },
-          "input": { "$ref": "#/$defs/question_plan_input" },
-          "output": { "$ref": "https://research-reading.local/contracts/question-plan.v1.json" }
-        }
-      },
-      {
-        "properties": {
-          "operation": { "const": "GENERATE_ANSWER" },
-          "input": { "$ref": "#/$defs/answer_input" },
-          "output": { "$ref": "#/$defs/answer_output" }
-        }
-      },
-      {
-        "properties": {
-          "operation": { "const": "CONNECTION_TEST" },
-          "input": { "$ref": "#/$defs/connection_test_input" },
-          "output": { "$ref": "#/$defs/connection_test_output" }
-        }
-      }
-    ]
-  }],
+  "title": "Wave 1 ModelGateway request response contract",
+  "oneOf": [
+    { "$ref": "#/$defs/question_plan_byok_request" },
+    { "$ref": "#/$defs/question_plan_mock_request" },
+    { "$ref": "#/$defs/question_plan_response" },
+    { "$ref": "#/$defs/answer_byok_request" },
+    { "$ref": "#/$defs/answer_mock_request" },
+    { "$ref": "#/$defs/answer_response" },
+    { "$ref": "#/$defs/connection_test_byok_request" },
+    { "$ref": "#/$defs/connection_test_mock_request" },
+    { "$ref": "#/$defs/connection_test_response" }
+  ],
   "$defs": {
-    "provider_config": {
+    "runtime_secret_ref": {
+      "description": "Invocation-only reference to a runtime secret. It is never persisted and never contains a plaintext API key.",
+      "type": "object",
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": { "const": "ENVIRONMENT" },
+        "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,127}$" }
+      },
+      "additionalProperties": false
+    },
+    "byok_provider_config": {
       "type": "object",
       "required": ["provider", "base_url", "model", "request_timeout_ms", "max_input_characters", "max_output_tokens"],
       "properties": {
@@ -51,11 +37,20 @@
       },
       "additionalProperties": false
     },
-    "runtime_secret_ref": {
+    "mock_provider_config": {
       "type": "object",
-      "required": ["kind", "name"],
-      "properties": { "kind": { "const": "ENVIRONMENT" }, "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,127}$" } },
+      "required": ["provider", "fixture_id"],
+      "properties": {
+        "provider": { "const": "MOCK" },
+        "fixture_id": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,100}$" }
+      },
       "additionalProperties": false
+    },
+    "provider_config": {
+      "oneOf": [
+        { "$ref": "#/$defs/byok_provider_config" },
+        { "$ref": "#/$defs/mock_provider_config" }
+      ]
     },
     "document_metadata": {
       "type": "object",
@@ -68,18 +63,36 @@
     },
     "context_spans": {
       "type": "array",
-      "minItems": 0,
       "items": { "$ref": "https://research-reading.local/contracts/evidence.v1.json#/$defs/context_span" }
     },
     "question_plan_input": {
       "type": "object",
-      "required": ["document_metadata", "document_language", "method_learning_mode", "context_spans", "runtime_config_ref"],
+      "required": ["document_metadata", "document_language", "method_learning_mode", "context_spans"],
       "properties": {
         "document_metadata": { "$ref": "#/$defs/document_metadata" },
         "document_language": { "type": "string", "minLength": 2 },
         "method_learning_mode": { "const": "METHOD_LEARNING" },
-        "context_spans": { "$ref": "#/$defs/context_spans" },
-        "runtime_config_ref": { "$ref": "#/$defs/runtime_secret_ref" }
+        "context_spans": { "$ref": "#/$defs/context_spans" }
+      },
+      "additionalProperties": false
+    },
+    "question_plan_draft": {
+      "type": "object",
+      "required": ["document_language", "retrieval_queries", "retrieval_terms", "questions"],
+      "properties": {
+        "document_language": { "type": "string", "minLength": 2 },
+        "retrieval_queries": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "retrieval_terms": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "questions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "properties": { "text": { "type": "string", "minLength": 1, "maxLength": 1000 } },
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": false
     },
@@ -93,27 +106,54 @@
       },
       "additionalProperties": false
     },
-    "answer_output": {
+    "supported_claim_draft": {
       "type": "object",
-      "required": ["status", "claims"],
+      "required": ["text", "claim_type", "candidate_context_span_ids"],
       "properties": {
-        "status": { "enum": ["SUCCESS", "INSUFFICIENT_EVIDENCE"] },
-        "claims": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "claim_type": { "enum": ["PAPER_FACT", "AUTHOR_CLAIM", "AGENT_INFERENCE"] },
+        "candidate_context_span_ids": {
           "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["claim_id", "text", "claim_type", "candidate_context_span_ids"],
-            "properties": {
-              "claim_id": { "type": "string", "pattern": "^claim_[A-Za-z0-9_-]+$" },
-              "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
-              "claim_type": { "enum": ["PAPER_FACT", "AUTHOR_CLAIM", "AGENT_INFERENCE", "INSUFFICIENT_EVIDENCE"] },
-              "candidate_context_span_ids": { "type": "array", "items": { "type": "string", "pattern": "^context_[A-Za-z0-9_-]+$" } }
-            },
-            "additionalProperties": false
-          }
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^context_[A-Za-z0-9_-]+$" }
         }
       },
       "additionalProperties": false
+    },
+    "insufficient_claim_draft": {
+      "type": "object",
+      "required": ["text", "claim_type", "candidate_context_span_ids"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "claim_type": { "const": "INSUFFICIENT_EVIDENCE" },
+        "candidate_context_span_ids": { "type": "array", "maxItems": 0 }
+      },
+      "additionalProperties": false
+    },
+    "answer_success_output": {
+      "type": "object",
+      "required": ["status", "claims"],
+      "properties": {
+        "status": { "const": "SUCCESS" },
+        "claims": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/supported_claim_draft" } }
+      },
+      "additionalProperties": false
+    },
+    "answer_insufficient_output": {
+      "type": "object",
+      "required": ["status", "claims"],
+      "properties": {
+        "status": { "const": "INSUFFICIENT_EVIDENCE" },
+        "claims": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "$ref": "#/$defs/insufficient_claim_draft" } }
+      },
+      "additionalProperties": false
+    },
+    "answer_output": {
+      "oneOf": [
+        { "$ref": "#/$defs/answer_success_output" },
+        { "$ref": "#/$defs/answer_insufficient_output" }
+      ]
     },
     "connection_test_input": {
       "type": "object",
@@ -121,18 +161,141 @@
       "properties": { "probe": { "const": true } },
       "additionalProperties": false
     },
-    "connection_test_output": {
+    "connection_test_success_output": {
       "type": "object",
       "required": ["success", "provider", "model"],
       "properties": {
-        "success": { "type": "boolean" },
+        "success": { "const": true },
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "connection_test_failure_output": {
+      "type": "object",
+      "required": ["success", "provider", "model", "error_category"],
+      "properties": {
+        "success": { "const": false },
         "provider": { "type": "string", "minLength": 1 },
         "model": { "type": "string", "minLength": 1 },
         "error_category": { "enum": ["AUTHENTICATION", "RATE_LIMIT", "TIMEOUT", "INVALID_RESPONSE", "UNAVAILABLE", "UNKNOWN"] },
-        "error_message": { "type": "string", "maxLength": 500 }
+        "error_message": { "type": "string", "minLength": 1, "maxLength": 500 }
+      },
+      "additionalProperties": false
+    },
+    "connection_test_output": {
+      "oneOf": [
+        { "$ref": "#/$defs/connection_test_success_output" },
+        { "$ref": "#/$defs/connection_test_failure_output" }
+      ]
+    },
+    "question_plan_byok_request": {
+      "type": "object",
+      "required": ["schema_version", "message_kind", "operation", "provider_config", "runtime_secret_ref", "input"],
+      "properties": {
+        "schema_version": { "const": "model-gateway.v1" },
+        "message_kind": { "const": "REQUEST" },
+        "operation": { "const": "GENERATE_QUESTION_PLAN" },
+        "provider_config": { "$ref": "#/$defs/byok_provider_config" },
+        "runtime_secret_ref": { "$ref": "#/$defs/runtime_secret_ref" },
+        "input": { "$ref": "#/$defs/question_plan_input" }
+      },
+      "additionalProperties": false
+    },
+    "question_plan_mock_request": {
+      "type": "object",
+      "required": ["schema_version", "message_kind", "operation", "provider_config", "input"],
+      "properties": {
+        "schema_version": { "const": "model-gateway.v1" },
+        "message_kind": { "const": "REQUEST" },
+        "operation": { "const": "GENERATE_QUESTION_PLAN" },
+        "provider_config": { "$ref": "#/$defs/mock_provider_config" },
+        "input": { "$ref": "#/$defs/question_plan_input" }
+      },
+      "additionalProperties": false
+    },
+    "question_plan_response": {
+      "type": "object",
+      "required": ["schema_version", "message_kind", "operation", "output"],
+      "properties": {
+        "schema_version": { "const": "model-gateway.v1" },
+        "message_kind": { "const": "RESPONSE" },
+        "operation": { "const": "GENERATE_QUESTION_PLAN" },
+        "output": { "$ref": "#/$defs/question_plan_draft" }
+      },
+      "additionalProperties": false
+    },
+    "answer_byok_request": {
+      "type": "object",
+      "required": ["schema_version", "message_kind", "operation", "provider_config", "runtime_secret_ref", "input"],
+      "properties": {
+        "schema_version": { "const": "model-gateway.v1" },
+        "message_kind": { "const": "REQUEST" },
+        "operation": { "const": "GENERATE_ANSWER" },
+        "provider_config": { "$ref": "#/$defs/byok_provider_config" },
+        "runtime_secret_ref": { "$ref": "#/$defs/runtime_secret_ref" },
+        "input": { "$ref": "#/$defs/answer_input" }
+      },
+      "additionalProperties": false
+    },
+    "answer_mock_request": {
+      "type": "object",
+      "required": ["schema_version", "message_kind", "operation", "provider_config", "input"],
+      "properties": {
+        "schema_version": { "const": "model-gateway.v1" },
+        "message_kind": { "const": "REQUEST" },
+        "operation": { "const": "GENERATE_ANSWER" },
+        "provider_config": { "$ref": "#/$defs/mock_provider_config" },
+        "input": { "$ref": "#/$defs/answer_input" }
+      },
+      "additionalProperties": false
+    },
+    "answer_response": {
+      "type": "object",
+      "required": ["schema_version", "message_kind", "operation", "output"],
+      "properties": {
+        "schema_version": { "const": "model-gateway.v1" },
+        "message_kind": { "const": "RESPONSE" },
+        "operation": { "const": "GENERATE_ANSWER" },
+        "output": { "$ref": "#/$defs/answer_output" }
+      },
+      "additionalProperties": false
+    },
+    "connection_test_byok_request": {
+      "type": "object",
+      "required": ["schema_version", "message_kind", "operation", "provider_config", "runtime_secret_ref", "input"],
+      "properties": {
+        "schema_version": { "const": "model-gateway.v1" },
+        "message_kind": { "const": "REQUEST" },
+        "operation": { "const": "CONNECTION_TEST" },
+        "provider_config": { "$ref": "#/$defs/byok_provider_config" },
+        "runtime_secret_ref": { "$ref": "#/$defs/runtime_secret_ref" },
+        "input": { "$ref": "#/$defs/connection_test_input" }
+      },
+      "additionalProperties": false
+    },
+    "connection_test_mock_request": {
+      "type": "object",
+      "required": ["schema_version", "message_kind", "operation", "provider_config", "input"],
+      "properties": {
+        "schema_version": { "const": "model-gateway.v1" },
+        "message_kind": { "const": "REQUEST" },
+        "operation": { "const": "CONNECTION_TEST" },
+        "provider_config": { "$ref": "#/$defs/mock_provider_config" },
+        "input": { "$ref": "#/$defs/connection_test_input" }
+      },
+      "additionalProperties": false
+    },
+    "connection_test_response": {
+      "type": "object",
+      "required": ["schema_version", "message_kind", "operation", "output"],
+      "properties": {
+        "schema_version": { "const": "model-gateway.v1" },
+        "message_kind": { "const": "RESPONSE" },
+        "operation": { "const": "CONNECTION_TEST" },
+        "output": { "$ref": "#/$defs/connection_test_output" }
       },
       "additionalProperties": false
     }
-  },
-  "additionalProperties": false
+  }
 }

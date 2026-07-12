@@ -19,11 +19,19 @@ dependencies:
     reason: "需要 Playwright 和 Node 24 CI 命令。"
 
 writable_paths:
-  - apps/web/**
+  - apps/web/src/features/**
+  - apps/web/src/pages/**
+  - apps/web/src/components/business/**
   - tests/e2e/web-skeleton/**
 read_only_paths:
   - packages/contracts/wave1/**
   - apps/api/**
+  - apps/web/package.json
+  - apps/web/tsconfig.json
+  - apps/web/vite.config.ts
+  - apps/web/host-policy.ts
+  - apps/web/index.html
+  - apps/web/src/main.tsx
 forbidden_paths:
   - package.json
   - packages/contracts/**

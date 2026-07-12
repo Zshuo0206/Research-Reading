@@ -3,7 +3,11 @@ import path from "node:path";
 import { compile } from "json-schema-to-typescript";
 
 const root = process.cwd();
-const schemaDir = path.join(root, "packages", "contracts", "wave1");
+const schemaDirIndex = process.argv.indexOf("--schema-dir");
+const schemaDir =
+  schemaDirIndex >= 0
+    ? path.resolve(process.argv[schemaDirIndex + 1])
+    : path.join(root, "packages", "contracts", "wave1");
 const outIndex = process.argv.indexOf("--out");
 const outputDir =
   outIndex >= 0
@@ -26,13 +30,19 @@ const byId = new Map(
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const resolve = (ref, current) => {
   if (ref.startsWith("#/$defs/"))
-    return current.$defs?.[ref.slice("#/$defs/".length)];
+    return {
+      owner: current,
+      target: current.$defs?.[ref.slice("#/$defs/".length)],
+    };
   const [id, fragment] = ref.split("#");
   const schema = byId.get(id);
   if (!schema) return undefined;
-  if (!fragment) return schema;
+  if (!fragment) return { owner: schema, target: schema };
   if (fragment.startsWith("/$defs/"))
-    return schema.$defs?.[fragment.slice("/$defs/".length)];
+    return {
+      owner: schema,
+      target: schema.$defs?.[fragment.slice("/$defs/".length)],
+    };
   return undefined;
 };
 const inline = (value, current, seen = new Set()) => {
@@ -40,11 +50,12 @@ const inline = (value, current, seen = new Set()) => {
     return value.map((entry) => inline(entry, current, seen));
   if (!value || typeof value !== "object") return value;
   if (typeof value.$ref === "string") {
-    const target = resolve(value.$ref, current);
-    if (!target || seen.has(value.$ref))
+    const resolved = resolve(value.$ref, current);
+    const identity = `${current.$id ?? "anonymous"}|${value.$ref}`;
+    if (!resolved?.target || seen.has(identity))
       return { type: "object", additionalProperties: true };
-    const nextSeen = new Set(seen).add(value.$ref);
-    return inline(clone(target), current, nextSeen);
+    const nextSeen = new Set(seen).add(identity);
+    return inline(clone(resolved.target), resolved.owner, nextSeen);
   }
   return Object.fromEntries(
     Object.entries(value).map(([key, entry]) => [

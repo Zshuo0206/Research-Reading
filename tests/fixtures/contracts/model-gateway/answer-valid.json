@@ -1,12 +1,9 @@
 {
   "schema_version": "model-gateway.v1",
+  "message_kind": "RESPONSE",
   "operation": "GENERATE_ANSWER",
-  "provider_config": { "provider": "OPENAI", "base_url": "https://api.openai.com/v1", "model": "test-model", "request_timeout_ms": 30000, "max_input_characters": 1000, "max_output_tokens": 100 },
-  "runtime_secret_ref": { "kind": "ENVIRONMENT", "name": "MODEL_API_KEY" },
-  "input": {
-    "confirmed_question_revision": "qrev_1",
-    "context_spans": [{ "context_span_id": "context_1", "document_version_id": "docv_1", "page_number": 1, "char_start": 0, "char_end": 12, "text": "Method text.", "page_text_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "extraction_profile_version": "pdfjs-text-v1" }],
-    "document_metadata": { "document_version_id": "docv_1", "page_count": 1 }
-  },
-  "output": { "status": "SUCCESS", "claims": [{ "claim_id": "claim_1", "text": "The method is evaluated.", "claim_type": "PAPER_FACT", "candidate_context_span_ids": ["context_1"] }] }
+  "output": {
+    "status": "SUCCESS",
+    "claims": [{ "text": "The method is evaluated.", "claim_type": "PAPER_FACT", "candidate_context_span_ids": ["context_1"] }]
+  }
 }

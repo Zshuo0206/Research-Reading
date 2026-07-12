@@ -168,24 +168,27 @@ Wave 1 必须包含 `ModelGateway.v1`、确定性 `MockModelGateway`、统一 Op
 
 Mock 用于 CI、自动测试、无网络开发、确定性失败场景以及前端/状态机开发；真实适配器用于用户实际使用、本地人工产品验收，以及验证结构化输出和证据引用能力。平台不提供共享密钥；用户密钥只来自环境变量或当前运行会话内存，重启后可要求重新输入。
 
-BYOK 配置与密钥分离：持久化配置只保存 provider、base_url、model、超时和 token/字符上限；运行时只接收 secret ref/内存 secret，不写入 SQLite、Git、日志、审计、导出或 fixture。浏览器不得直连供应商，调用必须经过本地后端。
+BYOK 配置与密钥分离：持久化配置只保存 provider、base_url、model、超时和 token/字符上限；每个真实 BYOK request 只在顶层接收一个 `runtime_secret_ref`，Mock request 不携带该字段。secret ref 仅指向运行时环境变量且不包含明文密钥，不写入 SQLite、Git、日志、审计、导出或 fixture。浏览器不得直连供应商，调用必须经过本地后端。
 
 ### 9.2 Gateway 契约
 
 ```text
 ModelGateway.v1
-  generate_question_plan(QuestionPlanInput) -> ModelResult<QuestionPlanOutput>
-  generate_answer(AnswerInput) -> ModelResult<AnswerOutput>
+  REQUEST  GENERATE_QUESTION_PLAN(QuestionPlanInput)
+  RESPONSE GENERATE_QUESTION_PLAN(QuestionPlanDraft)
+  REQUEST  GENERATE_ANSWER(AnswerInput)
+  RESPONSE GENERATE_ANSWER(AnswerDraft)
+  REQUEST/RESPONSE CONNECTION_TEST
 ```
 
-模型不得生成最终 `char_start`/`char_end`。服务端先把检索结果切成带服务端生成的 `context_span_id` 的 ContextSpan，再把 `context_span_id + text` 提供给模型。模型输出只能返回：
+request 与 response 是以 `message_kind` 和 `operation` 区分的完整 union；request 不含 output，response 不含 input。模型不得生成最终 `char_start`/`char_end`。服务端先把检索结果切成带服务端生成的 `context_span_id` 的 ContextSpan，再把 `context_span_id + text` 提供给模型。模型输出只能返回：
 
 - `context_span_id`；或
 - 包含一个或多个 `context_span_id` 的候选引用；可附带候选 quote，但不具有坐标权威。
 
 服务端根据 `context_span_id` 查找对应 canonical 页面文本，物化最终 EvidenceSpan，计算 `[start,end)`、quote 和 SHA-256，并重新验证。模型返回不存在的 span、跨 span 的 offset 或无法匹配的 quote 都被拒绝；不能由模型直接写入最终 EvidenceSpan。
 
-`AnswerOutput` 每条断言必须标记 `PAPER_FACT`、`AUTHOR_CLAIM` 或 `AGENT_INFERENCE`；无足够证据时返回 `INSUFFICIENT_EVIDENCE`。论文文本是数据，不得覆盖系统指令、Schema、权限或工具调用。
+`QuestionPlanDraft` 只含语言、检索词和问题文本；`AnswerDraft` 只含文本、claim type 和候选 context refs。正式计划、问题、revision、claim ID、时间、hash 和 review/verification 状态均由服务端物化。SUCCESS 至少有一个带候选引用的普通 claim；`INSUFFICIENT_EVIDENCE` 不含候选引用且不能混合普通 claim。论文文本是数据，不得覆盖系统指令、Schema、权限或工具调用。
 
 实现分为：
 

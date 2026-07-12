@@ -1,19 +1,23 @@
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const required = [
   "AGENTS.md",
   "docs/CURRENT_STATE.md",
   "apps/web/index.html",
-  "apps/api/src/server.mjs",
   "apps/api/src/server.ts",
+  "apps/api/src/host-policy.ts",
   "apps/api/package.json",
   "apps/worker/package.json",
   "apps/web/package.json",
+  "apps/web/host-policy.ts",
+  "apps/web/vite.config.ts",
   "packages/contracts/package.json",
-  "apps/worker/src/worker.mjs",
+  "apps/worker/src/worker.ts",
+  "compose.yaml",
+  "infra/Dockerfile",
   "packages/contracts/wave0.schema.json",
   "docs/templates/task.yaml",
 ];
@@ -27,6 +31,16 @@ const assertFiles = () => {
   for (const relative of required) {
     if (!fs.existsSync(path.join(root, relative)))
       fail(`missing required file: ${relative}`);
+  }
+  for (const obsolete of [
+    "apps/api/src/server.mjs",
+    "apps/worker/src/worker.mjs",
+    "apps/api/Dockerfile",
+    "apps/worker/Dockerfile",
+    "docker-compose.yml",
+  ]) {
+    if (fs.existsSync(path.join(root, obsolete)))
+      fail(`obsolete duplicate platform shell exists: ${obsolete}`);
   }
 };
 
@@ -52,8 +66,19 @@ const checkWave0Boundaries = () => {
 };
 
 const runHealth = async () => {
+  const build = spawnSync(
+    process.execPath,
+    [
+      path.join(root, "node_modules", "typescript", "bin", "tsc"),
+      "-p",
+      "apps/api/tsconfig.json",
+    ],
+    { cwd: root, stdio: "inherit" },
+  );
+  if (build.error || build.status !== 0)
+    throw new Error("formal TypeScript/Fastify API shell failed to build");
   const port = 4311;
-  const child = spawn(process.execPath, ["apps/api/src/server.mjs"], {
+  const child = spawn(process.execPath, ["apps/api/dist/server.js"], {
     cwd: root,
     env: { ...process.env, API_PORT: String(port), API_HOST: "127.0.0.1" },
     stdio: ["ignore", "pipe", "pipe"],

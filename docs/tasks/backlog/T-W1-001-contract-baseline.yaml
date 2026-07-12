@@ -11,6 +11,7 @@ scope:
   - "定义项目、文档、任务、问题、回答、revision、review_status、verification_status 和断言类型。"
   - "为 question-plan.v1 定义 document_language、retrieval_queries 和 retrieval_terms。"
   - "为 model-gateway.v1 定义 context_span_id/候选引用，禁止模型提交最终 char offset。"
+  - "将 ModelGateway 定义为完整 REQUEST/RESPONSE discriminated union；模型只返回 QuestionPlanDraft/AnswerDraft，不返回持久化 ID、revision、时间、hash 或审核状态。"
   - "定义 BYOK provider 配置、OpenAI-compatible 预设、自定义 HTTPS base_url、运行时 secret ref 与连接测试配置；普通 Schema 不得含明文 API Key。"
   - "定义 canonical_page_text、Unicode code point offset、右开区间、quote 和 SHA-256 编码规则。"
   - "提供 Schema 校验、错误码和版本兼容测试样例。"
@@ -49,6 +50,7 @@ acceptance_criteria:
   - "Job 取消、失败、重试和 lease 恢复迁移有可测试定义。"
   - "Mock Gateway 使用 model-gateway.v1；真实统一 OpenAI-compatible BYOK 适配器属于 Wave 1，但真实外部调用仅进入人工验收。"
   - "契约为统一 OpenAI-compatible BYOK 适配器保留 provider、base_url、model、超时和 token/字符上限；连接测试和密钥边界由 T-W1-004B 实现。"
+  - "真实 BYOK request 顶层只允许一个 runtime_secret_ref 且必须提供；Mock request 不携带 secret ref。"
 required_tests:
   - "JSON Schema 正例/反例校验。"
   - "错误码和状态机非法转换测试。"

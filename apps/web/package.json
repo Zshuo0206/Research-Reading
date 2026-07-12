@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "vite preview --host 127.0.0.1 --port 4173"
+    "start": "vite preview"
   },
   "dependencies": {
     "react": "^19.1.0",

@@ -1,6 +1,6 @@
 # Current State
 
-最后更新：2026-07-11（Asia/Shanghai）  
+最后更新：2026-07-12（Asia/Shanghai）
 状态：`WAVE_1_FIRST_BATCH_REPAIR_PENDING_REVIEW`
 
 Wave 1 状态：`第一批整改完成，等待独立复核，后续业务实现保持锁定`
@@ -39,7 +39,7 @@ Wave 1：在已批准的个人单用户 Web 工作台中实现“方法学习”
 ## 已建立的 Wave 1 规划材料
 
 - `docs/architecture/wave1-technical-plan.md`（技术提案）
-- `docs/rfcs/RFC-W1-001-technical-foundation-and-contract-baseline.md`（PROPOSED）
+- `docs/rfcs/RFC-W1-001-technical-foundation-and-contract-baseline.md`（REPAIR_PENDING_REVIEW）
 - `docs/integration/ownership-map.yaml` 的 Wave 1 ownership
 - `docs/audits/wave1-technical-startup-summary.md`（Gate A 待复审）
 
@@ -65,9 +65,10 @@ Wave 1：在已批准的个人单用户 Web 工作台中实现“方法学习”
 
 - Wave 0 静态骨架检查：通过
 - 占位健康检查：通过
-- Wave 1 第一批整改验证：契约、平台 smoke、Playwright platform smoke、TypeScript、build、security、npm audit 已有实际结果；最终独立复核尚未完成
+- Wave 1 第一批最终整改验证：11 个 Vitest、9 个 Schema、生成漂移测试、TypeScript discriminator narrowing、平台 smoke、1 个 Playwright platform smoke、4 个 security 禁止文件探针、build 和 npm audit 已有实际结果；最终独立复核尚未完成
 - Node 24 环境检查：`v24.16.0`；`npm ci`：通过；规划检查、依赖环和 ownership 可写路径重叠：通过
 - 真实业务单元/集成/E2E/AI 评测：未执行，因属于后续任务或真实人工验收项
+- `docker compose config` 实际退出码为 1：当前主机未安装/不可发现 Docker CLI，因此未执行 compose up/health/down；未将其伪造为通过。
 
 ## 下一步（不自动执行）
 

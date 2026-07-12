@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { isApiHostAllowed } from "./host-policy.js";
 
 export function createApiServer() {
   const app = Fastify({ logger: false });
@@ -13,8 +14,14 @@ export function createApiServer() {
 
 const host = process.env.API_HOST ?? "127.0.0.1";
 const port = Number(process.env.API_PORT ?? 4310);
-if (host !== "127.0.0.1") {
-  console.error(JSON.stringify({ error: "API_HOST must be 127.0.0.1" }));
+const containerMode = process.env.CONTAINER_MODE === "1";
+if (!isApiHostAllowed(host, containerMode)) {
+  console.error(
+    JSON.stringify({
+      error:
+        "API_HOST must be 127.0.0.1 unless CONTAINER_MODE=1 explicitly allows 0.0.0.0 inside a container",
+    }),
+  );
   process.exit(1);
 }
 

@@ -1,0 +1,8 @@
+{
+  "schema_version": "model-gateway.v1",
+  "message_kind": "REQUEST",
+  "operation": "CONNECTION_TEST",
+  "provider_config": { "provider": "CUSTOM_OPENAI_COMPATIBLE", "base_url": "https://localhost.example/v1", "model": "custom-model", "request_timeout_ms": 1000, "max_input_characters": 100, "max_output_tokens": 10 },
+  "runtime_secret_ref": { "kind": "ENVIRONMENT", "name": "MODEL_API_KEY" },
+  "input": { "probe": true }
+}

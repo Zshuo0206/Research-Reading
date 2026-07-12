@@ -1,7 +1,6 @@
 {
   "schema_version": "model-gateway.v1",
+  "message_kind": "RESPONSE",
   "operation": "GENERATE_ANSWER",
-  "provider_config": { "provider": "OPENAI", "base_url": "https://api.openai.com/v1", "model": "test-model", "request_timeout_ms": 30000, "max_input_characters": 1000, "max_output_tokens": 100 },
-  "input": { "confirmed_question_revision": "qrev_1", "context_spans": [], "document_metadata": { "document_version_id": "docv_1", "page_count": 1 } },
-  "output": { "status": "SUCCESS", "claims": [{ "claim_id": "claim_1", "text": "Bad output", "claim_type": "PAPER_FACT", "candidate_context_span_ids": [], "evidence_refs": ["context_1"] }] }
+  "output": { "status": "SUCCESS", "claims": [] }
 }
