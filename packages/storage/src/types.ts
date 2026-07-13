@@ -31,3 +31,80 @@ export interface CreateJobInput<TPayload = unknown> {
   maxAttempts?: number;
   createdAt?: string;
 }
+
+export type CreatedBy = "MODEL" | "LOCAL_OPERATOR";
+
+export interface QuestionRevisionRecord {
+  revisionId: string;
+  revisionNumber: number;
+  createdBy: CreatedBy;
+  createdAt: string;
+  contentHash: string;
+  supersedesRevisionId: string | null;
+  text: string;
+}
+
+export interface QuestionRecord {
+  questionId: string;
+  questionPlanId: string;
+  documentVersionId: string;
+  currentRevisionId: string;
+  reviewStatus: ReviewStatus;
+  revision: QuestionRevisionRecord;
+}
+
+export interface AnswerClaimRecord {
+  claimId: string;
+  text: string;
+  claimType:
+    | "PAPER_FACT"
+    | "AUTHOR_CLAIM"
+    | "AGENT_INFERENCE"
+    | "INSUFFICIENT_EVIDENCE";
+  evidenceRefs: string[];
+}
+
+export interface AnswerRevisionRecord {
+  revisionId: string;
+  revisionNumber: number;
+  createdBy: CreatedBy;
+  createdAt: string;
+  contentHash: string;
+  supersedesRevisionId: string | null;
+  claims: AnswerClaimRecord[];
+}
+
+export interface AnswerRecord {
+  answerId: string;
+  questionId: string;
+  currentRevisionId: string;
+  reviewStatus: ReviewStatus;
+  verificationStatus: VerificationStatus;
+  revision: AnswerRevisionRecord;
+}
+
+export interface StoredContextSpan {
+  contextSpanId: string;
+  documentVersionId: string;
+  pageNumber: number;
+  charStart: number;
+  charEnd: number;
+  text: string;
+  pageTextSha256: string;
+  extractionProfileVersion: string;
+}
+
+export interface StoredEvidenceSpan {
+  evidenceSpanId: string;
+  answerRevisionId: string;
+  claimId: string;
+  contextSpanId: string;
+  documentVersionId: string;
+  pageNumber: number;
+  charStart: number;
+  charEnd: number;
+  quote: string;
+  pageTextSha256: string;
+  extractionProfileVersion: string;
+  verificationStatus: "VERIFIED" | "INVALID";
+}
