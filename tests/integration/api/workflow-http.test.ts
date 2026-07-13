@@ -109,6 +109,13 @@ describe("Wave 1 workflow HTTP API", () => {
     );
     const question = plan.questions[0];
     expect(question).toMatchObject({ reviewStatus: "DRAFT" });
+    const unconfirmedAnswer = await app.inject({
+      method: "POST",
+      url: `/api/v1/questions/${question.questionId}/answers`,
+      payload: answerRequest("answer-before-confirm"),
+    });
+    expect(unconfirmedAnswer.statusCode).toBe(409);
+    expect(error(unconfirmedAnswer).code).toBe("CONFLICT");
     const edited = data(
       await app.inject({
         method: "PATCH",
@@ -299,9 +306,16 @@ describe("Wave 1 workflow HTTP API", () => {
       (await app.inject({ method: "GET", url: "/api/v1/jobs/job_missing" }))
         .statusCode,
     ).toBe(404);
+    const project = data(
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/projects",
+        payload: { name: "Errors" },
+      }),
+    );
     const invalidUpload = await app.inject({
       method: "POST",
-      url: "/api/v1/projects/proj_missing/documents",
+      url: `/api/v1/projects/${project.project_id}/documents`,
       headers: {
         "content-type": "application/pdf",
         "x-filename": "bad.pdf",
@@ -309,7 +323,38 @@ describe("Wave 1 workflow HTTP API", () => {
       },
       payload: Buffer.from("not a PDF"),
     });
-    expect(invalidUpload.statusCode).toBe(404);
+    expect(invalidUpload.statusCode).toBe(400);
+    expect(error(invalidUpload).code).toBe("UNSUPPORTED_INPUT");
+
+    const failedUpload = data(
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${project.project_id}/documents`,
+        headers: {
+          "content-type": "application/pdf",
+          "x-filename": "synthetic-text.pdf",
+          "idempotency-key": "failed-import",
+        },
+        payload: await readFile(fixture),
+      }),
+    );
+    const workerWithoutImport = createWorkerRuntime(
+      "worker_without_import",
+      setup.databasePath,
+    );
+    expect(await workerWithoutImport.jobRuntime.runOnce()).toBe(true);
+    workerWithoutImport.database.close();
+    const failedJob = data(
+      await app.inject({
+        method: "GET",
+        url: `/api/v1/jobs/${failedUpload.job_id}`,
+      }),
+    );
+    expect(failedJob).toMatchObject({
+      status: "FAILED",
+      error: { code: "JOB_FAILED" },
+    });
+    expect(JSON.stringify(failedJob)).not.toContain("sourcePath");
 
     const sessionKey = "secret-token-must-not-persist";
     const registration = await app.inject({
