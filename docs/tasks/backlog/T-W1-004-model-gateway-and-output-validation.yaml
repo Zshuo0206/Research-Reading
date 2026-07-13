@@ -1,7 +1,7 @@
 task_id: T-W1-004A
 title: "实现 ModelGateway 接口、Mock 和模型输出验证"
 owner_role: model-gateway-agent
-status: DRAFT
+status: INTEGRATED
 wave: 1
 
 objective: "为问题计划和回答提供同一版本化 ModelGateway 接口、确定性 Mock、证据引用边界和服务端输出验证。"

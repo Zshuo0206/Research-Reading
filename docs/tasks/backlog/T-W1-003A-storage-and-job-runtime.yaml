@@ -1,7 +1,7 @@
 task_id: T-W1-003A
 title: "实现 SQLite 存储、文件对象和 Job 运行时基础"
 owner_role: storage-job-agent
-status: DRAFT
+status: INTEGRATED
 wave: 1
 
 objective: "建立本地 SQLite/WAL 数据存储、内容寻址文件对象和可恢复 Job runtime；不实现 PDF 解析或产品工作流。"

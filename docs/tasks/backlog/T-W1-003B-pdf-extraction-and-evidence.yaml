@@ -1,7 +1,7 @@
 task_id: T-W1-003B
 title: "实现 PDF 资源限制、canonical 文本和 Evidence 坐标"
 owner_role: pdf-evidence-agent
-status: DRAFT
+status: INTEGRATED
 wave: 1
 
 objective: "实现可提取文本 PDF 的输入限制、pdfjs-text-v1 提取 profile、canonical_page_text 和服务端 EvidenceSpan 验证。"
