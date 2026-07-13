@@ -33,7 +33,11 @@ export class WorkflowApiHandlers {
       const code = errorCode(error);
       return {
         statusCode:
-          code === "NOT_FOUND" ? 404 : code === "CONFLICT" ? 409 : 400,
+          code === "NOT_FOUND"
+            ? 404
+            : code === "CONFLICT" || code === "DOCUMENT_NOT_READY"
+              ? 409
+              : 400,
         body: {
           schema_version: "api.v1",
           request_id: requestId,

@@ -7,7 +7,7 @@ export interface QuestionPlanJobPayload {
   documentLanguage: string;
   pageCount: number;
   contextSpans: unknown[];
-  providerConfig: { provider: "MOCK"; fixture_id: string };
+  providerConfig: Record<string, unknown>;
 }
 
 export interface AnswerGenerationJobPayload {
@@ -15,7 +15,7 @@ export interface AnswerGenerationJobPayload {
   documentVersionId: string;
   pageCount: number;
   contextSpans: unknown[];
-  providerConfig: { provider: "MOCK"; fixture_id: string };
+  providerConfig: Record<string, unknown>;
 }
 
 export function createQuestionPlanJobHandler(gateway: WorkflowModelGateway) {
@@ -74,7 +74,7 @@ function parseQuestionPlanPayload(value: unknown): QuestionPlanJobPayload {
     typeof value.documentLanguage !== "string" ||
     !Number.isInteger(value.pageCount) ||
     !Array.isArray(value.contextSpans) ||
-    !isMockProvider(value.providerConfig)
+    !isProviderConfig(value.providerConfig)
   )
     throw new Error("Invalid QUESTION_PLAN workflow payload");
   return value as unknown as QuestionPlanJobPayload;
@@ -90,7 +90,7 @@ function parseAnswerPayload(value: unknown): AnswerGenerationJobPayload {
     typeof value.documentVersionId !== "string" ||
     !Number.isInteger(value.pageCount) ||
     !Array.isArray(value.contextSpans) ||
-    !isMockProvider(value.providerConfig)
+    !isProviderConfig(value.providerConfig)
   )
     throw new Error("Invalid ANSWER_GENERATION workflow payload");
   return value as unknown as AnswerGenerationJobPayload;
@@ -111,14 +111,8 @@ function extractOutput(
   return value.output;
 }
 
-function isMockProvider(
-  value: unknown,
-): value is { provider: "MOCK"; fixture_id: string } {
-  return (
-    isRecord(value) &&
-    value.provider === "MOCK" &&
-    typeof value.fixture_id === "string"
-  );
+function isProviderConfig(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && typeof value.provider === "string";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
