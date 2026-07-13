@@ -3,12 +3,6 @@ import Ajv2020Module, {
   type ValidateFunction,
 } from "ajv/dist/2020.js";
 import addFormatsModule from "ajv-formats";
-
-import type {
-  ContextSpan,
-  ModelGatewayRequest,
-  ModelGatewayResponse,
-} from "../../contracts/wave1/src/index.js";
 import answerSchema from "../../contracts/wave1/answer.v1.schema.json" with {
   type: "json",
 };
@@ -21,6 +15,11 @@ import modelGatewaySchema from "../../contracts/wave1/model-gateway.v1.schema.js
 import questionPlanSchema from "../../contracts/wave1/question-plan.v1.schema.json" with {
   type: "json",
 };
+import type {
+  ContextSpan,
+  ModelGatewayRequest,
+  ModelGatewayResponse,
+} from "../../contracts/wave1/src/index.js";
 
 export type QuestionPlanRequest = Extract<
   ModelGatewayRequest,
@@ -54,7 +53,12 @@ export class ModelGatewayError extends Error {
       | "INVALID_REQUEST"
       | "INVALID_RESPONSE"
       | "UNKNOWN_CANDIDATE_CONTEXT_SPAN"
-      | "PROVIDER_NOT_IMPLEMENTED",
+      | "PROVIDER_NOT_IMPLEMENTED"
+      | "AUTHENTICATION"
+      | "RATE_LIMIT"
+      | "TIMEOUT"
+      | "UNAVAILABLE"
+      | "UNKNOWN",
     message: string,
     readonly details: readonly string[] = [],
   ) {
@@ -238,3 +242,10 @@ export class MockModelGateway implements ModelGateway {
 export function validateModelGatewayEnvelope(value: unknown): boolean {
   return validateEnvelope(value);
 }
+
+export {
+  type ByokGatewayLogEvent,
+  type ByokGatewayLogger,
+  type HttpClient,
+  OpenAICompatibleByokGateway,
+} from "./openai-compatible.js";
