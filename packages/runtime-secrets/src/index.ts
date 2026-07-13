@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { RuntimeSecretRef } from "../../contracts/wave1/src/index.js";
+import type { RuntimeSecretRef } from "../../contracts/dist/wave1/src/index.js";
 
 export class RuntimeSecretError extends Error {
   constructor(

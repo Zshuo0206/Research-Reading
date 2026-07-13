@@ -19,7 +19,7 @@ import type {
   ContextSpan,
   ModelGatewayRequest,
   ModelGatewayResponse,
-} from "../../contracts/wave1/src/index.js";
+} from "../../contracts/dist/wave1/src/index.js";
 
 export type QuestionPlanRequest = Extract<
   ModelGatewayRequest,

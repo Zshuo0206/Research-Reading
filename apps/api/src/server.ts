@@ -1,14 +1,59 @@
 import Fastify from "fastify";
 import { isApiHostAllowed } from "./host-policy.js";
+import { createApiRuntime } from "./runtime.js";
 
 export function createApiServer() {
   const app = Fastify({ logger: false });
+  const runtime = createApiRuntime();
+
+  app.decorate("workflowApiHandlers", runtime.workflowHandlers);
+  app.decorate("byokConnectionTestApi", runtime.byokConnectionTestApi);
+  app.addHook("onClose", async () => {
+    runtime.database.close();
+  });
+
   app.get("/health", async () => ({
     status: "ok",
     service: "api-platform-shell",
     wave: 1,
     schema_version: "api.v1",
   }));
+
+  app.post("/api/v1/byok/session-key", async (request, reply) => {
+    const body = request.body as { api_key?: unknown } | undefined;
+    if (!body || typeof body.api_key !== "string") {
+      return reply
+        .code(400)
+        .send({ error: "A non-empty api_key is required." });
+    }
+    try {
+      return runtime.byokConnectionTestApi.registerSessionKey(body.api_key);
+    } catch {
+      return reply.code(400).send({ error: "The API key is invalid." });
+    }
+  });
+
+  app.delete(
+    "/api/v1/byok/session-key/:handle",
+    async (request) => {
+      const params = request.params as { handle?: string };
+      return runtime.byokConnectionTestApi.clearSessionKey(params.handle ?? "");
+    },
+  );
+
+  app.post("/api/v1/byok/connection-test", async (request, reply) => {
+    try {
+      const result = await runtime.byokConnectionTestApi.testConnection(
+        request.body as never,
+      );
+      return reply.code(result.status_code).send(result.body);
+    } catch {
+      return reply
+        .code(400)
+        .send({ error: "The connection-test request is invalid." });
+    }
+  });
+
   return app;
 }
 

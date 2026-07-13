@@ -34,7 +34,7 @@ describe("SQLite storage", () => {
     });
     expect(
       database.prepare("SELECT version FROM schema_migrations").all(),
-    ).toEqual([{ version: 1 }]);
+    ).toEqual([{ version: 1 }, { version: 2 }]);
     database.close();
   });
 

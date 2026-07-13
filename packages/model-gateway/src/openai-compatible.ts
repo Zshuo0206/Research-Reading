@@ -3,12 +3,12 @@ import type {
   ModelGatewayResponse,
   Provider,
   RuntimeSecretRef,
-} from "../../contracts/wave1/src/index.js";
-import { PROVIDER_PRESETS } from "../../contracts/wave1/src/index.js";
+} from "../../contracts/dist/wave1/src/index.js";
+import { PROVIDER_PRESETS } from "../../contracts/dist/wave1/src/index.js";
 import {
   RuntimeSecretError,
   type SecretResolver,
-} from "../../runtime-secrets/src/index.js";
+} from "../../runtime-secrets/dist/index.js";
 import {
   assertCandidateContextSpanIds,
   type ModelGateway,
