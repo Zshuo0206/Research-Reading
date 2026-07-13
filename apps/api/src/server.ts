@@ -1,10 +1,23 @@
-import Fastify from "fastify";
+import { fileURLToPath } from "node:url";
+import Fastify, { type FastifyReply } from "fastify";
 import { isApiHostAllowed } from "./host-policy.js";
 import { createApiRuntime } from "./runtime.js";
 
-export function createApiServer() {
+export function createApiServer(
+  options: { databasePath?: string; contentRoot?: string } = {},
+) {
   const app = Fastify({ logger: false });
-  const runtime = createApiRuntime();
+  const runtime = createApiRuntime(options.databasePath, options.contentRoot);
+  const sendHandled = async (
+    reply: FastifyReply,
+    id: string,
+    operation: (
+      service: typeof runtime.workflowService,
+    ) => unknown | Promise<unknown>,
+  ) => {
+    const result = await runtime.workflowHandlers.handle(id, operation);
+    return reply.code(result.statusCode).send(result.body);
+  };
 
   app.decorate("workflowApiHandlers", runtime.workflowHandlers);
   app.decorate("byokConnectionTestApi", runtime.byokConnectionTestApi);
@@ -18,6 +31,12 @@ export function createApiServer() {
     wave: 1,
     schema_version: "api.v1",
   }));
+
+  app.addContentTypeParser(
+    "application/pdf",
+    { parseAs: "buffer" },
+    (_request, body, done) => done(null, body),
+  );
 
   app.post("/api/v1/byok/session-key", async (request, reply) => {
     const body = request.body as { api_key?: unknown } | undefined;
@@ -33,13 +52,10 @@ export function createApiServer() {
     }
   });
 
-  app.delete(
-    "/api/v1/byok/session-key/:handle",
-    async (request) => {
-      const params = request.params as { handle?: string };
-      return runtime.byokConnectionTestApi.clearSessionKey(params.handle ?? "");
-    },
-  );
+  app.delete("/api/v1/byok/session-key/:handle", async (request) => {
+    const params = request.params as { handle?: string };
+    return runtime.byokConnectionTestApi.clearSessionKey(params.handle ?? "");
+  });
 
   app.post("/api/v1/byok/connection-test", async (request, reply) => {
     try {
@@ -53,6 +69,229 @@ export function createApiServer() {
         .send({ error: "The connection-test request is invalid." });
     }
   });
+
+  app.post("/api/v1/projects", async (request, reply) => {
+    const body = request.body as { name?: unknown } | undefined;
+    return sendHandled(reply, requestId(request.id), () => {
+      if (!body || typeof body.name !== "string")
+        throw validationError("Project name is required");
+      return runtime.workflowHttp.createProject(body.name);
+    });
+  });
+
+  app.get("/api/v1/projects/:projectId", async (request, reply) => {
+    const { projectId } = request.params as { projectId?: string };
+    return sendHandled(reply, requestId(request.id), () => {
+      requireId(projectId, "proj_");
+      return runtime.workflowHttp.getProject(projectId);
+    });
+  });
+
+  app.get("/api/v1/projects/:projectId/snapshot", async (request, reply) => {
+    const { projectId } = request.params as { projectId?: string };
+    return sendHandled(reply, requestId(request.id), () => {
+      requireId(projectId, "proj_");
+      return runtime.workflowHttp.getProjectSnapshot(projectId);
+    });
+  });
+
+  app.post("/api/v1/projects/:projectId/documents", async (request, reply) => {
+    const { projectId } = request.params as { projectId?: string };
+    const filename = request.headers["x-filename"];
+    const idempotencyKey = request.headers["idempotency-key"];
+    return sendHandled(reply, requestId(request.id), async () => {
+      requireId(projectId, "proj_");
+      if (typeof filename !== "string" || filename.length === 0)
+        throw validationError("x-filename is required");
+      if (typeof idempotencyKey !== "string" || idempotencyKey.length === 0)
+        throw validationError("Idempotency-Key is required");
+      if (!(request.body instanceof Buffer))
+        throw validationError("A PDF request body is required");
+      const job = await runtime.documentIngest.upload({
+        projectId,
+        title: filename,
+        file: {
+          filename,
+          contentType: String(request.headers["content-type"] ?? ""),
+          bytes: request.body,
+        },
+        idempotencyKey,
+      });
+      return {
+        document_id: job.payload.documentId,
+        document_version_id: job.payload.documentVersionId,
+        job_id: job.jobId,
+      };
+    });
+  });
+
+  app.get("/api/v1/documents/:documentId", async (request, reply) => {
+    const { documentId } = request.params as { documentId?: string };
+    return sendHandled(reply, requestId(request.id), () => {
+      requireId(documentId, "doc_");
+      return runtime.workflowHttp.getDocument(documentId);
+    });
+  });
+
+  app.get("/api/v1/jobs/:jobId", async (request, reply) => {
+    const { jobId } = request.params as { jobId?: string };
+    return sendHandled(reply, requestId(request.id), () => {
+      requireId(jobId, "job_");
+      return runtime.workflowHttp.getJob(jobId);
+    });
+  });
+
+  app.post(
+    "/api/v1/document-versions/:documentVersionId/question-plans",
+    async (request, reply) => {
+      const { documentVersionId } = request.params as {
+        documentVersionId?: string;
+      };
+      const body = request.body as
+        | {
+            document_language?: unknown;
+            provider_config?: unknown;
+            idempotency_key?: unknown;
+          }
+        | undefined;
+      return sendHandled(reply, requestId(request.id), () => {
+        requireId(documentVersionId, "docv_");
+        if (
+          !body ||
+          typeof body.document_language !== "string" ||
+          typeof body.idempotency_key !== "string"
+        )
+          throw validationError(
+            "document_language and idempotency_key are required",
+          );
+        return runtime.workflowHttp.enqueueQuestionPlan({
+          documentVersionId,
+          documentLanguage: body.document_language,
+          providerConfig: parseProvider(body.provider_config),
+          idempotencyKey: body.idempotency_key,
+        });
+      });
+    },
+  );
+
+  app.get(
+    "/api/v1/document-versions/:documentVersionId/question-plan",
+    async (request, reply) => {
+      const { documentVersionId } = request.params as {
+        documentVersionId?: string;
+      };
+      return sendHandled(reply, requestId(request.id), () => {
+        requireId(documentVersionId, "docv_");
+        return runtime.workflowHttp.getQuestionPlan(documentVersionId);
+      });
+    },
+  );
+
+  app.get("/api/v1/questions/:questionId", async (request, reply) => {
+    const { questionId } = request.params as { questionId?: string };
+    return sendHandled(reply, requestId(request.id), () => {
+      requireId(questionId, "question_");
+      return runtime.workflowHttp.getQuestion(questionId);
+    });
+  });
+
+  app.patch("/api/v1/questions/:questionId", async (request, reply) => {
+    const { questionId } = request.params as { questionId?: string };
+    const body = request.body as
+      | { revision_id?: unknown; text?: unknown }
+      | undefined;
+    return sendHandled(reply, requestId(request.id), (service) => {
+      requireId(questionId, "question_");
+      if (
+        !body ||
+        typeof body.revision_id !== "string" ||
+        typeof body.text !== "string"
+      )
+        throw validationError("revision_id and text are required");
+      return service.editQuestion(questionId, body.revision_id, body.text);
+    });
+  });
+
+  for (const action of ["confirm", "reject"] as const) {
+    app.post(
+      `/api/v1/questions/:questionId/${action}`,
+      async (request, reply) => {
+        const { questionId } = request.params as { questionId?: string };
+        const body = request.body as { revision_id?: unknown } | undefined;
+        return sendHandled(reply, requestId(request.id), (service) => {
+          requireId(questionId, "question_");
+          if (!body || typeof body.revision_id !== "string")
+            throw validationError("revision_id is required");
+          return action === "confirm"
+            ? service.confirmQuestion(questionId, body.revision_id)
+            : service.rejectQuestion(questionId, body.revision_id);
+        });
+      },
+    );
+  }
+
+  app.post("/api/v1/questions/:questionId/answers", async (request, reply) => {
+    const { questionId } = request.params as { questionId?: string };
+    const body = request.body as
+      | {
+          provider_config?: unknown;
+          idempotency_key?: unknown;
+        }
+      | undefined;
+    return sendHandled(reply, requestId(request.id), () => {
+      requireId(questionId, "question_");
+      if (!body || typeof body.idempotency_key !== "string")
+        throw validationError("idempotency_key is required");
+      return runtime.workflowHttp.enqueueAnswer({
+        questionId,
+        providerConfig: parseProvider(body.provider_config),
+        idempotencyKey: body.idempotency_key,
+      });
+    });
+  });
+
+  app.get("/api/v1/answers/:answerId", async (request, reply) => {
+    const { answerId } = request.params as { answerId?: string };
+    return sendHandled(reply, requestId(request.id), () => {
+      requireId(answerId, "answer_");
+      return runtime.workflowHttp.getAnswer(answerId);
+    });
+  });
+
+  app.patch("/api/v1/answers/:answerId", async (request, reply) => {
+    const { answerId } = request.params as { answerId?: string };
+    const body = request.body as
+      | {
+          revision_id?: unknown;
+          draft?: unknown;
+        }
+      | undefined;
+    return sendHandled(reply, requestId(request.id), () => {
+      requireId(answerId, "answer_");
+      if (!body || typeof body.revision_id !== "string" || !body.draft)
+        throw validationError("revision_id and draft are required");
+      return runtime.workflowHttp.editAnswer({
+        answerId,
+        expectedRevisionId: body.revision_id,
+        draft: body.draft as never,
+      });
+    });
+  });
+
+  for (const action of ["confirm", "reject"] as const) {
+    app.post(`/api/v1/answers/:answerId/${action}`, async (request, reply) => {
+      const { answerId } = request.params as { answerId?: string };
+      const body = request.body as { revision_id?: unknown } | undefined;
+      return sendHandled(reply, requestId(request.id), (service) => {
+        requireId(answerId, "answer_");
+        if (!body || typeof body.revision_id !== "string")
+          throw validationError("revision_id is required");
+        return action === "confirm"
+          ? service.confirmAnswer(answerId, body.revision_id)
+          : service.rejectAnswer(answerId, body.revision_id);
+      });
+    });
+  }
 
   return app;
 }
@@ -70,24 +309,78 @@ if (!isApiHostAllowed(host, containerMode)) {
   process.exit(1);
 }
 
-const app = createApiServer();
-try {
-  await app.listen({ host, port });
-  console.log(
-    JSON.stringify({
-      event: "server_started",
-      service: "api-platform-shell",
-      host,
-      port,
-    }),
-  );
-  if (process.argv.includes("--smoke")) await app.close();
-} catch (error) {
-  console.error(
-    JSON.stringify({
-      error: "API_START_FAILED",
-      message: error instanceof Error ? error.message : String(error),
-    }),
-  );
-  process.exitCode = 1;
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const app = createApiServer();
+  try {
+    await app.listen({ host, port });
+    console.log(
+      JSON.stringify({
+        event: "server_started",
+        service: "api-platform-shell",
+        host,
+        port,
+      }),
+    );
+    if (process.argv.includes("--smoke")) await app.close();
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        error: "API_START_FAILED",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    process.exitCode = 1;
+  }
+}
+
+function requestId(value: string): string {
+  return `req_${value.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+}
+
+function requireId(
+  value: string | undefined,
+  prefix: string,
+): asserts value is string {
+  if (!value?.startsWith(prefix))
+    throw validationError("Resource ID is invalid");
+}
+
+function validationError(message: string) {
+  return Object.assign(new Error(message), { code: "VALIDATION_ERROR" });
+}
+
+function parseProvider(value: unknown) {
+  if (typeof value !== "object" || value === null)
+    throw validationError("A model configuration is required");
+  const config = value as Record<string, unknown>;
+  if (config.provider === "MOCK" && typeof config.fixture_id === "string")
+    return config as { provider: "MOCK"; fixture_id: string };
+  if (
+    [
+      "OPENAI",
+      "GEMINI",
+      "GROQ",
+      "OPENROUTER",
+      "CUSTOM_OPENAI_COMPATIBLE",
+    ].includes(String(config.provider)) &&
+    typeof config.base_url === "string" &&
+    typeof config.model === "string" &&
+    Number.isInteger(config.request_timeout_ms) &&
+    Number.isInteger(config.max_input_characters) &&
+    Number.isInteger(config.max_output_tokens)
+  )
+    return config as {
+      provider:
+        | "OPENAI"
+        | "GEMINI"
+        | "GROQ"
+        | "OPENROUTER"
+        | "CUSTOM_OPENAI_COMPATIBLE";
+      base_url: string;
+      model: string;
+      request_timeout_ms: number;
+      max_input_characters: number;
+      max_output_tokens: number;
+    };
+  throw validationError("Model configuration is invalid");
 }

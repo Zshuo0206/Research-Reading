@@ -24,10 +24,26 @@ export interface CanonicalPage {
   extraction_profile_version: string;
 }
 
-export interface ProviderConfig {
+export interface MockProviderConfig {
   provider: "MOCK";
   fixture_id: string;
 }
+
+export interface ByokProviderConfig {
+  provider:
+    | "OPENAI"
+    | "GEMINI"
+    | "GROQ"
+    | "OPENROUTER"
+    | "CUSTOM_OPENAI_COMPATIBLE";
+  base_url: string;
+  model: string;
+  request_timeout_ms: number;
+  max_input_characters: number;
+  max_output_tokens: number;
+}
+
+export type ProviderConfig = MockProviderConfig | ByokProviderConfig;
 
 export interface QuestionPlanDraft {
   document_language: string;
