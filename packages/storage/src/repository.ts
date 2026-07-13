@@ -221,12 +221,33 @@ export class StorageRepository {
     return created;
   }
 
+  createOrGetJob<T>(input: CreateJobInput<T>): JobRecord<T> {
+    const existing = this.getJobByIdempotencyKey<T>(input.idempotencyKey);
+    if (existing) return existing;
+    try {
+      return this.createJob(input);
+    } catch (error) {
+      const raced = this.getJobByIdempotencyKey<T>(input.idempotencyKey);
+      if (raced) return raced;
+      throw error;
+    }
+  }
+
   getJob<TPayload = unknown, TResult = unknown>(
     jobId: string,
   ): JobRecord<TPayload, TResult> | undefined {
     const row = this.database
       .prepare("SELECT * FROM jobs WHERE job_id = ?")
       .get(jobId) as SqlRow | undefined;
+    return row ? mapJob<TPayload, TResult>(row) : undefined;
+  }
+
+  getJobByIdempotencyKey<TPayload = unknown, TResult = unknown>(
+    idempotencyKey: string,
+  ): JobRecord<TPayload, TResult> | undefined {
+    const row = this.database
+      .prepare("SELECT * FROM jobs WHERE idempotency_key = ?")
+      .get(idempotencyKey) as SqlRow | undefined;
     return row ? mapJob<TPayload, TResult>(row) : undefined;
   }
 
