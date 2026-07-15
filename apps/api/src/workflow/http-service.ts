@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type {
   StorageRepository,
@@ -300,20 +301,21 @@ export class WorkflowHttpService {
         "Document extraction is not complete",
       );
     this.finalizeDocumentImport(job);
-    const result = parseJson<unknown>(job.result_json, null);
-    if (!isExtractedDocument(result))
+    const documentVersion = this.storage.getDocumentVersion(documentVersionId);
+    const pages = this.storage.getDocumentPages(documentVersionId);
+    if (!documentVersion || Number(documentVersion.page_count) !== pages.length)
       throw new WorkflowHttpError(
         "JOB_FAILED",
         "Document extraction result is invalid",
       );
     return {
-      pageCount: result.page_count,
-      pages: result.pages.map((page) => ({
-        document_version_id: documentVersionId,
-        page_number: page.page_number,
-        canonical_page_text: page.canonical_page_text,
-        page_text_sha256: page.canonical_page_text_sha256,
-        extraction_profile_version: result.extraction_profile.version,
+      pageCount: Number(documentVersion.page_count),
+      pages: pages.map((page) => ({
+        document_version_id: page.documentVersionId,
+        page_number: page.pageNumber,
+        canonical_page_text: page.canonicalPageText,
+        page_text_sha256: page.pageTextSha256,
+        extraction_profile_version: page.extractionProfileVersion,
       })),
     };
   }
@@ -446,20 +448,50 @@ function isExtractedDocument(value: unknown): value is {
     code_point_length: number;
   }>;
 } {
-  return (
-    isRecord(value) &&
-    typeof value.source_sha256 === "string" &&
-    typeof value.page_count === "number" &&
-    isRecord(value.extraction_profile) &&
-    typeof value.extraction_profile.version === "string" &&
-    Array.isArray(value.pages) &&
-    value.pages.every(
-      (page) =>
-        isRecord(page) &&
-        typeof page.page_number === "number" &&
-        typeof page.canonical_page_text === "string" &&
-        typeof page.canonical_page_text_sha256 === "string" &&
-        typeof page.code_point_length === "number",
-    )
+  const pageCount = isRecord(value) ? value.page_count : undefined;
+  if (
+    !isRecord(value) ||
+    typeof value.source_sha256 !== "string" ||
+    typeof pageCount !== "number" ||
+    !Number.isInteger(pageCount) ||
+    pageCount <= 0 ||
+    !isRecord(value.extraction_profile) ||
+    typeof value.extraction_profile.version !== "string" ||
+    !Array.isArray(value.pages) ||
+    value.pages.length !== pageCount
+  )
+    return false;
+
+  const pageNumbers = value.pages.map((page) =>
+    isRecord(page) && typeof page.page_number === "number"
+      ? page.page_number
+      : null,
   );
+  if (
+    pageNumbers.some(
+      (pageNumber) =>
+        typeof pageNumber !== "number" ||
+        !Number.isInteger(pageNumber) ||
+        pageNumber < 1 ||
+        pageNumber > pageCount,
+    ) ||
+    new Set(pageNumbers).size !== pageCount
+  )
+    return false;
+
+  return value.pages.every((page) => {
+    if (
+      !isRecord(page) ||
+      typeof page.canonical_page_text !== "string" ||
+      typeof page.canonical_page_text_sha256 !== "string" ||
+      !Number.isInteger(page.code_point_length)
+    )
+      return false;
+    const canonicalPageText = page.canonical_page_text;
+    return (
+      page.code_point_length === Array.from(canonicalPageText).length &&
+      createHash("sha256").update(canonicalPageText, "utf8").digest("hex") ===
+        page.canonical_page_text_sha256
+    );
+  });
 }
