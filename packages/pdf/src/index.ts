@@ -99,8 +99,16 @@ const loadPdfJs: PdfJsLoader = async () =>
 
 function classifyPdfJsError(error: unknown): PdfIngestionError {
   const name = error instanceof Error ? error.name : "";
-  if (name === "PasswordException") return new PdfIngestionError("ENCRYPTED_PDF", "Encrypted PDFs are unsupported");
-  if (name === "InvalidPDFException" || name === "MissingPDFException" || name === "UnexpectedResponseException") {
+  if (name === "PasswordException")
+    return new PdfIngestionError(
+      "ENCRYPTED_PDF",
+      "Encrypted PDFs are unsupported",
+    );
+  if (
+    name === "InvalidPDFException" ||
+    name === "MissingPDFException" ||
+    name === "UnexpectedResponseException"
+  ) {
     return new PdfIngestionError("INVALID_PDF", "PDF is damaged or invalid");
   }
   return error instanceof PdfIngestionError
@@ -114,7 +122,13 @@ function classifyPdfJsError(error: unknown): PdfIngestionError {
 function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new PdfIngestionError("EXTRACTION_TIMEOUT", "PDF extraction timed out")),
+      () =>
+        reject(
+          new PdfIngestionError(
+            "EXTRACTION_TIMEOUT",
+            "PDF extraction timed out",
+          ),
+        ),
       timeoutMs,
     );
     operation.then(
@@ -135,9 +149,15 @@ export async function extractTextPdf(
   limits: ExtractionLimits = DEFAULT_LIMITS,
   pdfJsLoader: PdfJsLoader = loadPdfJs,
 ): Promise<ExtractedDocument> {
-  if (bytes.byteLength > limits.maxBytes) throw new PdfIngestionError("PDF_LIMIT_EXCEEDED", "PDF exceeds byte limit");
-  if (Buffer.from(bytes.subarray(0, 5)).toString("ascii") !== "%PDF-") throw new PdfIngestionError("UNSUPPORTED_INPUT", "Input is not a PDF");
-  if (Buffer.from(bytes).includes(Buffer.from("/Encrypt"))) throw new PdfIngestionError("ENCRYPTED_PDF", "Encrypted PDFs are unsupported");
+  if (bytes.byteLength > limits.maxBytes)
+    throw new PdfIngestionError("PDF_LIMIT_EXCEEDED", "PDF exceeds byte limit");
+  if (Buffer.from(bytes.subarray(0, 5)).toString("ascii") !== "%PDF-")
+    throw new PdfIngestionError("UNSUPPORTED_INPUT", "Input is not a PDF");
+  if (Buffer.from(bytes).includes(Buffer.from("/Encrypt")))
+    throw new PdfIngestionError(
+      "ENCRYPTED_PDF",
+      "Encrypted PDFs are unsupported",
+    );
 
   const operation = (async () => {
     const pdfjs = await pdfJsLoader();
@@ -148,12 +168,22 @@ export async function extractTextPdf(
     });
     try {
       const document = await loadingTask.promise;
-      if (document.numPages > limits.maxPages) throw new PdfIngestionError("PDF_LIMIT_EXCEEDED", "PDF exceeds page limit");
+      if (document.numPages > limits.maxPages)
+        throw new PdfIngestionError(
+          "PDF_LIMIT_EXCEEDED",
+          "PDF exceeds page limit",
+        );
       let totalCodePoints = 0;
       const pages: CanonicalPage[] = [];
-      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      for (
+        let pageNumber = 1;
+        pageNumber <= document.numPages;
+        pageNumber += 1
+      ) {
         const page = await document.getPage(pageNumber);
-        const content = await page.getTextContent({ disableNormalization: true });
+        const content = await page.getTextContent({
+          disableNormalization: true,
+        });
         const items: string[] = [];
         for (const item of content.items) {
           if (!("str" in item)) continue;
@@ -163,7 +193,11 @@ export async function extractTextPdf(
         const canonicalPageText = canonicalizePageText(items);
         const codePointLength = [...canonicalPageText].length;
         totalCodePoints += codePointLength;
-        if (totalCodePoints > limits.maxCodePoints) throw new PdfIngestionError("PDF_LIMIT_EXCEEDED", "PDF exceeds text limit");
+        if (totalCodePoints > limits.maxCodePoints)
+          throw new PdfIngestionError(
+            "PDF_LIMIT_EXCEEDED",
+            "PDF exceeds text limit",
+          );
         pages.push({
           page_number: pageNumber,
           canonical_page_text: canonicalPageText,
@@ -172,11 +206,18 @@ export async function extractTextPdf(
         });
         page.cleanup();
       }
-      if (pages.every((page) => page.code_point_length === 0)) throw new PdfIngestionError("NO_EXTRACTABLE_TEXT", "PDF contains no extractable text");
+      if (pages.every((page) => page.code_point_length === 0))
+        throw new PdfIngestionError(
+          "NO_EXTRACTABLE_TEXT",
+          "PDF contains no extractable text",
+        );
       return {
         source_sha256: sha256(bytes),
         page_count: pages.length,
-        extraction_profile: { ...EXTRACTION_PROFILE, pdfjs_version: pdfjs.version },
+        extraction_profile: {
+          ...EXTRACTION_PROFILE,
+          pdfjs_version: pdfjs.version,
+        },
         pages,
       };
     } finally {
@@ -202,10 +243,39 @@ export interface ContextSpan {
   extraction_profile_version: string;
 }
 
-export function validateContextSpan(span: ContextSpan, documentVersionId: string, page: CanonicalPage): void {
-  if (span.document_version_id !== documentVersionId || span.page_number !== page.page_number) throw new PdfIngestionError("INVALID_PDF", "ContextSpan document or page mismatch");
-  if (span.page_text_sha256 !== page.canonical_page_text_sha256 || span.extraction_profile_version !== EXTRACTION_PROFILE.version) throw new PdfIngestionError("INVALID_PDF", "ContextSpan hash or profile mismatch");
+export function validateContextSpan(
+  span: ContextSpan,
+  documentVersionId: string,
+  page: CanonicalPage,
+): void {
+  if (
+    span.document_version_id !== documentVersionId ||
+    span.page_number !== page.page_number
+  )
+    throw new PdfIngestionError(
+      "INVALID_PDF",
+      "ContextSpan document or page mismatch",
+    );
+  if (
+    span.page_text_sha256 !== page.canonical_page_text_sha256 ||
+    span.extraction_profile_version !== EXTRACTION_PROFILE.version
+  )
+    throw new PdfIngestionError(
+      "INVALID_PDF",
+      "ContextSpan hash or profile mismatch",
+    );
   const points = [...page.canonical_page_text];
-  if (!Number.isInteger(span.char_start) || !Number.isInteger(span.char_end) || span.char_start < 0 || span.char_start >= span.char_end || span.char_end > points.length) throw new PdfIngestionError("INVALID_PDF", "ContextSpan coordinates are invalid");
-  if (points.slice(span.char_start, span.char_end).join("") !== span.text) throw new PdfIngestionError("INVALID_PDF", "ContextSpan quote mismatch");
+  if (
+    !Number.isInteger(span.char_start) ||
+    !Number.isInteger(span.char_end) ||
+    span.char_start < 0 ||
+    span.char_start >= span.char_end ||
+    span.char_end > points.length
+  )
+    throw new PdfIngestionError(
+      "INVALID_PDF",
+      "ContextSpan coordinates are invalid",
+    );
+  if (points.slice(span.char_start, span.char_end).join("") !== span.text)
+    throw new PdfIngestionError("INVALID_PDF", "ContextSpan quote mismatch");
 }
