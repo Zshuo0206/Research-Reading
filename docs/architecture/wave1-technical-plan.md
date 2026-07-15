@@ -1,5 +1,14 @@
 # Wave 1 Technical Plan
 
+## 状态校正说明（2026-07-15）
+
+本文主体记录的是 Wave 1 第一批启动方案及其历史 Gate 记录；当前实际实施状态以
+`docs/CURRENT_STATE.md` 和 `docs/devlog/2026-07-15.md` 为准。SQLite、PDF、
+Mock/BYOK、快速问答 Workflow API、最小 Web 和 `guided-learning.v1` 契约已有部分
+进入 main；`guided-learning.v1` runtime 尚未进入 main。API/SQLite runtime 已由主控
+作为独立任务 T-W1-013 授权并在隔离 worktree 中推进，当前尚未集成；Worker、Web
+runtime 和端到端验收仍未实现。原有 Gate 表格和历史决策记录保留，不因本次同步改写为整体开放。
+
 - 状态：`FROZEN_FOR_FIRST_BATCH_REPAIR_PENDING_REVIEW`
 - 产品范围：`APPROVED_BY_HUMAN`
 - Gate A 技术方案冻结：`REPAIR_REVIEW_PENDING`

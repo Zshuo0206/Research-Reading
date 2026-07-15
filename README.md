@@ -2,7 +2,7 @@
 
 这是一个问题驱动型科研文献阅读与研究资产管理平台的工程仓库。
 
-当前处于 **Wave 0**：只验证工程治理、Agent 协作、可恢复流程和最小可运行骨架，不包含真实产品业务。
+当前处于 **Wave 1**：基础运行时、快速问答最小闭环、真实文本 PDF 导入和 `guided-learning.v1` 公共契约已经进入 `main`；`guided-learning.v1` runtime 尚未进入 `main`。API/SQLite runtime 已由主控作为独立任务 T-W1-013 授权并在隔离 worktree 中推进，当前尚未集成；Worker、Web、端到端验收和 BYOK 产品验收仍未实现。
 
 ## 快速入口
 
@@ -26,4 +26,4 @@ npm run ci
 npm run api
 ```
 
-Wave 0 命令使用 Node 内置能力，不需要安装第三方依赖。生产技术栈和真实依赖将在后续 ADR 中冻结。
+上述命令使用仓库当前 Wave 1 工具链；Node 24 和 workspace 依赖由 package.json/package-lock.json 锁定，完整产品能力仍按 `docs/CURRENT_STATE.md` 逐项进入。

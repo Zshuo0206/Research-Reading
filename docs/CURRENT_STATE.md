@@ -1,85 +1,106 @@
 # Current State
 
-最后更新：2026-07-13（Asia/Shanghai）
-状态：`WAVE_1_FIRST_ROUND_INTEGRATED_PENDING_ACCEPTANCE`
+最后更新：2026-07-15（Asia/Shanghai）
+状态：`WAVE_1_GUIDED_LEARNING_CONTRACT_INTEGRATED_RUNTIME_PENDING`
 
-产品需求基线：V1.0 产品定义已归档至 `docs/product/versions/科研文献引导式学习平台_V1.0产品定义.md`，开发需求见 `docs/product/v1.0-development-requirements.md`；RFC-W1-002 为 `PROPOSED`，不自动解锁下一轮编码。
+产品需求基线：V1.0 产品定义已归档至
+`docs/product/versions/科研文献引导式学习平台_V1.0产品定义.md`，开发需求见
+`docs/product/v1.0-development-requirements.md`。
+RFC-W1-002 仍为 `PROPOSED`；契约版本与状态机部分已通过独立决策记录落地。
+`guided-learning.v1` runtime 尚未进入 main；API/SQLite runtime 已由主控作为独立任务
+T-W1-013 授权并在隔离 worktree 中推进，当前尚未集成。后续 Worker、Web、E2E 和验收
+任务仍需按依赖单独授权。
 
-Wave 1 状态：`第一轮最小运行闭环已集成，等待技术/产品验收；下一轮未启动`
-Gate A 技术方案冻结：`INTEGRATION_REVIEW_PENDING`
-Gate B 编码授权：`GRANTED（仅已下发的第一轮任务）`
-Gate C 下一轮业务任务：`NOT_STARTED`
+## main 当前基线
+
+- `main`、`origin/main` 和当前合并基线为 `2efdcd3aafe42bdbf3ad44baa268b43f523e40f6`。
+- PR #2、PR #3、PR #4 已合并；PR #4 合并了 `guided-learning.v1` 契约实现。
+- T-W1-011 功能分支和临时 worktree 已清理；T-W1-013 是另一个独立的未集成开发环境，其代码不计入 main 当前能力。
 
 ## 当前 Wave
 
-Wave 1：在已批准的个人单用户 Web 工作台中保留快速问答模式，并实现 V1.0 引导式学习的第一阶段“理解内容”问题—作答—点评—证据回答—阶段总结闭环；第一轮已集成 SQLite/Job、文本型 PDF 提取和确定性 MockModelGateway。
+Wave 1 已进入基础运行时和公共契约集成阶段。快速问答模式继续保留，
+`guided-learning.v1` 已进入 main，但其 runtime 尚未进入 main；T-W1-013 正在隔离环境中推进。
 
-## 当前目标
+## 已实现能力
 
-完成第一轮最小可运行基础并保留下一轮入口；当前不自动开始 BYOK、问题/回答工作流或 Web 业务页面开发。
+当前 main 中已有：
 
-## 已冻结范围
+- SQLite、SQL migration、storage repository 和 Job runtime；
+- 内容寻址的真实文本型 PDF 上传、按页提取、canonical page text、页面 SHA-256、extraction profile 和 Evidence 坐标基础；
+- 确定性的无网络 `MockModelGateway`；
+- OpenAI-compatible BYOK adapter、provider preset、连接测试和会话内存 secret；
+- 快速问答 Workflow API/HTTP、问题计划和回答生成 Worker handler、revision/review/verification 与 Evidence 物化路径；
+- 最小快速问答 Web 工作台和 loopback 平台入口；
+- `guided-learning.v1` Schema、生成类型、Session/Command 分支、状态机、幂等 fingerprint、failure resume、Evidence 确认门、跨字段一致性校验、fixtures 和正负契约测试。
 
-- 产品范围与本批次技术方向已获人类项目负责人批准；第一轮已解锁并集成 SQLite/Job、文本型 PDF 上传与提取、ContextSpan 校验、MockModelGateway。
-- 快速问答闭环为：创建项目 → 导入一篇真实可提取文本 PDF → 选择方法学习 → 生成结构化问题计划 → 用户确认/修改/拒绝问题 → 对至少一个确认问题生成回答 → 展示证据片段及页码或稳定文本位置 → 用户确认/修改/拒绝回答。
-- V1.0 引导式学习闭环为：输入学习目标 → 生成 2–3 个候选方向并选择 → 展示三阶段路线（仅理解内容开放）→ 生成 3–7 道开放式问题 → 逐题作答/跳过 → 点评、参考答案和 Evidence → 修正当前回答并主动进入下一题 → 阶段总结。
-- 回答必须区分 `PAPER_FACT`、`AUTHOR_CLAIM`、`AGENT_INFERENCE`；未经确认的内容不得视为正式研究资产。
-- 真实 BYOK 调用、快速问答/引导式学习工作流 API、问题与回答生成、Evidence 物化/确认、Web 端到端页面和阶段总结仍属于下一轮；本轮未实现。
-- Wave 1 仅允许本地 `127.0.0.1` 部署；没有远程认证主体，不开放远程监听。
-- Agent 只能一层树；子 Agent 不创建下级 Agent。
+## 仅有契约/骨架、runtime 尚未进入 main
 
-## 已冻结规则/契约
+`guided-learning.v1` 当前已经形成可测试的公共契约和状态机；其 runtime 尚未进入 main。
+API/SQLite 部分由独立任务 T-W1-013 推进，当前仍未集成。main 尚未包含：
 
-- `AGENTS.md`
-- `docs/governance/`
-- `docs/templates/`
-- `docs/standards/`
-- `docs/quality/`
-- `docs/runbooks/`
-- `packages/contracts/wave1/` 的 `wave1.v1` Schema、TypeScript 类型和契约测试
-- `docs/rfcs/RFC-W1-002-guided-learning-v1-product-alignment.md` 的待审契约演进提案；未审查前不修改共享契约
-- 统一真实 npm 命令入口、Node 24 CI、secret/audit/license 检查
+- 引导式学习 API Session/Command 持久化和 HTTP runtime；
+- 引导式学习专用数据库表、字段和 migration；
+- 候选方向、路线、逐题问题、点评、参考答案和阶段总结的 Worker 生成；
+- 引导式学习 Web 交互；
+- 真实 PDF + 引导式学习端到端闭环验收。
 
-## 已建立的 Wave 1 规划材料
+## 已冻结的边界与 Gate
 
-- `docs/architecture/wave1-technical-plan.md`（技术提案）
-- `docs/rfcs/RFC-W1-001-technical-foundation-and-contract-baseline.md`（REPAIR_PENDING_REVIEW）
-- `docs/integration/ownership-map.yaml` 的 Wave 1 ownership
-- `docs/audits/wave1-technical-startup-summary.md`（Gate A 待复审）
+- 快速问答与引导式学习是两个模式；后续实现必须按 `schema_version`/模式分流，不能混用状态语义。
+- 客户端不能推进服务端 `state`、`route`、`feedback`、`summary`、`failure` 或 Evidence `verification_status`。
+- `ANALYZE` 和 `TRANSFER` 在 V1.0 继续锁定。
+- 只允许本地 `127.0.0.1` 部署；不开放远程监听、共享密钥、OCR、扫描 PDF、复杂表格/公式理解、多篇综合、资产库、导出或协作。
+- T-W1-011 契约任务已通过实际审查、PR checks 并合并；这不等于整个 Wave 1 Gate 或引导式学习 runtime 已进入 main。
+- T-W1-013 已由主控确定并授权为独立开发任务，隔离分支基于 `2efdcd3` 推进，尚未集成；不把其分支代码计入 main 当前能力。
+- 技术方案文档保留 Gate A `REPAIR_REVIEW_PENDING`、Gate B `GRANTED（仅已批准的第一批）` 和 Gate C `LOCKED` 的治理边界；本次同步不擅自扩大 Gate。
+- RFC-W1-002 整体仍为 `PROPOSED`；契约部分以 `docs/contracts/guided-learning-contract-version-decision.md` 的独立技术决定为准。
 
 ## 任务状态
 
-- Wave 0 文档与骨架：完成，主控复核通过
-- 多 Agent dry-run：已演练并集成，见 `docs/audits/multi-agent-dry-run.md`
-- 主控复跑：`node scripts/check.mjs all` 通过
-- dry-run 分支：已集成，临时 worktree 已清理；分支保留用于审计追踪
-- Wave 0：人工验收通过
-- Wave 1：第一轮已集成待验收；T-W1-001/T-W1-002 为 REVIEW，T-W1-007 为 PARTIAL；仓库任务文件中的 T-W1-003A、T-W1-003B、T-W1-004A 已更新为 `INTEGRATED`。本轮下发编号映射为：T-W1-004A→仓库 T-W1-003B（PDF），T-W1-006A→仓库 T-W1-004A（MockModelGateway）；不重命名历史任务文件。
-- V1.0 需求更新任务 T-W1-010 已形成文档与 RFC；T-W1-011、T-W1-005、T-W1-006 仍为 `DRAFT/LOCKED`，未开始下一轮业务编码。
-- 人工验收责任边界：已修正；技术验收由责任 Agent、QA Agent 和主控 Agent 完成，人类负责人依据摘要进行产品层面验收
-- 当前 Wave 0 验收摘要：`docs/audits/wave0-human-acceptance-summary.md`
-- Wave 1 技术启动摘要：`docs/audits/wave1-technical-startup-summary.md`
-
-## 阻塞与未解决问题
-
-- 第一轮只覆盖最小本地能力：持久化/Job、内容寻址 PDF 上传与文本提取、canonical page text/page hash/extraction profile、ContextSpan 坐标校验，以及无网络的确定性 MockModelGateway；完整工作流 API 和 Web 尚未接入。
-- 真实 BYOK 外部调用、问题/回答状态机、Evidence 物化和 Web 页面是下一轮范围；真实密钥不进入 CI，平台不提供共享密钥。
-- `npm run ci` 当前受 Windows CRLF checkout 的 format 门禁影响；`npm run contract` 的 generated type byte-drift 检查也受同一换行差异影响，未进行全仓库换行处理。Docker CLI 不可用，因此 `docker compose config` 未能在本机执行。
+- T-W1-010：`INTEGRATED`，V1.0 产品定义归档和开发需求基线已进入 main。
+- T-W1-011：`INTEGRATED`，`guided-learning.v1` 公共契约、状态机、生成类型、fixtures 和测试已进入 main。
+- T-W1-012：`DONE`，本次文档与正式状态同步任务。
+- T-W1-005：保持 `DRAFT`；扩展后的双模式完整范围尚未进入 main；快速问答子集已存在，guided-learning API/SQLite 部分正在独立任务中推进，其余 Worker 和完整流程仍待实施。
+- T-W1-006：保持 `DRAFT`；最小快速问答 Web 已存在；引导式学习 Web 尚未实施。
+- 不据此改变其他任务或 Gate 的状态。
 
 ## 当前测试状态
 
-- Wave 0 静态骨架检查：通过
-- 占位健康检查：通过
-- 第一轮任务相关集成测试：7 个文件、32 个测试通过；默认测试：8 个文件、44 个测试通过；SQLite 重连、Job 成功/失败、文本型 PDF 提取/失败、ContextSpan 校验、Mock 三种操作/Schema/insufficient evidence 均有覆盖。
-- `npm ci`、`npm run lint`、`npm run typecheck`、`npm run build`、`npm run smoke`、`npm run e2e:smoke`、`npm run security`、`node scripts/check.mjs all` 和 `git diff --check`：已通过；`npm run contract` 的各项子检查已通过，但总命令仍被 CRLF 生成文件字节比较阻塞。
-- `npm run ci`：未通过，首个失败为 Windows CRLF checkout 导致的 format 门禁；没有为此执行全仓库换行处理。`docker compose config`：未执行成功，原因是本机无 Docker CLI。
+- PR #2、PR #3、PR #4 的合并结果已在 main；PR #4 GitHub checks 全部通过。
+- T-W1-011 最终契约门禁：`npm run contract:generate`、`npm run contract:check`、`npm run contract` 通过；guided-learning 定向 Vitest 13/13；`npm test` 24/24；lint、typecheck、build、security 通过，security 报告 0 vulnerabilities；`git diff --check` 通过。
+- 本地完整 `npm run ci` 仍在首步 `format` 受既有 Windows CRLF checkout 问题阻断；本次不批量改写全仓换行。
+- `contract:check` 本身已通过；不能把本地 CI 的 CRLF 阻断写成契约 drift 失败。
+- T-W1-011 分支未实际运行 smoke；本次文档同步不补写未执行结果，且本轮未修改 runtime。
+
+## 尚未解决的问题
+
+- guided-learning.v1 API/SQLite runtime 尚未进入 main；T-W1-013 已授权并在隔离环境推进，Worker 生成、Web 交互和真实 PDF 引导式学习端到端验收尚未实现。
+- 全仓 Windows CRLF format 基线治理尚未解决。
+- RFC-W1-002 仍需完整的产品/技术审批，不因契约决定记录而整体变为 `ACCEPTED`。
 
 ## 下一步（不自动执行）
 
-Wave 1 产品范围与技术启动材料见 `docs/product/wave1-scope-and-decisions.md`、`docs/product/wave1-product-scope-summary.md`、`docs/product/v1.0-development-requirements.md`、`docs/architecture/wave1-technical-plan.md` 和 `docs/audits/wave1-technical-startup-summary.md`。第一轮已集成；不自动进入下一轮。下一轮先完成快速问答 Mock Web 闭环并进行小范围试用，再按 V1.0 基线实现学习目标 → 候选方向 → 三阶段路线 → 第一阶段逐题学习 → 点评/证据回答 → 阶段总结的 Web 闭环。公共契约和状态机先经 RFC-W1-002 审查，下一轮尚未启动。
+按依赖顺序，下一步应是：
 
-人工项目负责人已通过 Wave 0，并批准 Wave 1 技术方向、BYOK 范围及第一轮编码授权。主控完成文档同步后停止，不自动创建下一轮分支或 worktree。
+1. 跟踪独立任务 T-W1-013 的 API/SQLite runtime 实现，待其验证后再集成 main。
+2. 实现方向、问题、点评、参考答案和阶段总结的 Worker 生成。
+3. 实现目标输入、方向选择、路线、逐题学习和阶段总结 Web 交互。
+4. 使用真实可提取文本 PDF 完成 Mock 端到端测试，再执行 BYOK 人工验收和完整产品验收。
+
+不自动扩大 T-W1-005/T-W1-006 的范围；T-W1-013 保持独立隔离，不因本次文档同步而计入 main。
 
 ## 恢复检查
 
-新会话恢复时必须阅读本文件、`AGENTS.md`、最新 devlog、ownership map 和活动任务；不得依赖历史聊天。下一轮建议：`T-W1-006B`（BYOK）与同一 workflow owner 负责的 `T-W1-005A/005B` 可并行准备；先完成问题确认，再完成回答/Evidence 确认，最后实现 `T-W1-008` Web 闭环。下一轮尚未启动。
+恢复会话时必须读取：
+
+- `AGENTS.md`；
+- 本文件；
+- `docs/devlog/INDEX.md` 和最新 `docs/devlog/2026-07-15.md`；
+- `docs/contracts/guided-learning-contract-version-decision.md`；
+- `docs/tasks/backlog/T-W1-005-reading-workflow-api.yaml`；
+- `docs/tasks/backlog/T-W1-006-web-workbench.yaml`；
+- `docs/tasks/backlog/T-W1-011-guided-learning-contract-refinement.yaml`；
+- `docs/integration/ownership-map.yaml`。
+
+恢复时以当前 main、实际代码、任务文件和最新日志为准，不依赖历史聊天，也不把契约集成误判为完整产品交付。
