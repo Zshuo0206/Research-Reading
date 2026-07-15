@@ -22,6 +22,10 @@ import {
   createAnswerGenerationJobHandler,
   createQuestionPlanJobHandler,
 } from "./workflow/handlers.js";
+import {
+  createDocumentImportJobHandler,
+  type TextPdfExtractor,
+} from "./workflow/document-import.js";
 
 const migrationsDirectory = fileURLToPath(
   new URL("../../api/migrations/", import.meta.url),
@@ -58,10 +62,13 @@ export function createWorkerRuntime(
       } as never);
     },
   };
+  const documentImportHandler =
+    options.documentImportHandler ??
+    createDocumentImportJobHandler(defaultTextPdfExtractor);
   const handlers: Partial<Record<RunnableJob["kind"], JobHandler>> = {
     QUESTION_PLAN: createQuestionPlanJobHandler(gateway),
     ANSWER_GENERATION: createAnswerGenerationJobHandler(gateway),
-    DOCUMENT_IMPORT: options.documentImportHandler,
+    DOCUMENT_IMPORT: documentImportHandler,
   };
 
   return {
@@ -70,6 +77,13 @@ export function createWorkerRuntime(
     jobRuntime: new JobRuntime(storage, workerId, handlers),
   };
 }
+
+const defaultTextPdfExtractor: TextPdfExtractor = async (bytes) => {
+  const pdfModule = (await import(
+    new URL("../../../packages/pdf/dist/index.js", import.meta.url).href
+  )) as { extractTextPdf: TextPdfExtractor };
+  return pdfModule.extractTextPdf(bytes);
+};
 
 function providerName(request: unknown): string {
   if (

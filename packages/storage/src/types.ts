@@ -32,6 +32,15 @@ export interface CreateJobInput<TPayload = unknown> {
   createdAt?: string;
 }
 
+export interface DocumentPageRecord {
+  documentVersionId: string;
+  pageNumber: number;
+  canonicalPageText: string;
+  pageTextSha256: string;
+  extractionProfileVersion: string;
+  codePointLength: number;
+}
+
 export type CreatedBy = "MODEL" | "LOCAL_OPERATOR";
 
 export interface QuestionRevisionRecord {

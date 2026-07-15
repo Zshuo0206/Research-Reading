@@ -273,6 +273,16 @@ export class WorkflowHttpService {
         extractionProfileVersion: result.extraction_profile.version,
       });
     }
+    this.storage.saveDocumentPages(
+      payload.documentVersionId,
+      result.pages.map((page) => ({
+        pageNumber: page.page_number,
+        canonicalPageText: page.canonical_page_text,
+        pageTextSha256: page.canonical_page_text_sha256,
+        extractionProfileVersion: result.extraction_profile.version,
+        codePointLength: page.code_point_length,
+      })),
+    );
   }
 
   private ensureDocumentReady(documentVersionId: string): {
@@ -433,6 +443,7 @@ function isExtractedDocument(value: unknown): value is {
     page_number: number;
     canonical_page_text: string;
     canonical_page_text_sha256: string;
+    code_point_length: number;
   }>;
 } {
   return (
@@ -441,6 +452,14 @@ function isExtractedDocument(value: unknown): value is {
     typeof value.page_count === "number" &&
     isRecord(value.extraction_profile) &&
     typeof value.extraction_profile.version === "string" &&
-    Array.isArray(value.pages)
+    Array.isArray(value.pages) &&
+    value.pages.every(
+      (page) =>
+        isRecord(page) &&
+        typeof page.page_number === "number" &&
+        typeof page.canonical_page_text === "string" &&
+        typeof page.canonical_page_text_sha256 === "string" &&
+        typeof page.code_point_length === "number",
+    )
   );
 }
