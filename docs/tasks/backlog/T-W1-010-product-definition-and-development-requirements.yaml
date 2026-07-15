@@ -1,0 +1,75 @@
+task_id: T-W1-010
+title: "归档 V1.0 产品定义并更新开发需求基线"
+owner_role: orchestrator
+status: REVIEW
+wave: 1
+
+objective: "将已确认的 V1.0 产品定义归档到版本目录，形成面向契约、工作流、Web 和 QA 的开发需求基线，并记录公共契约演进提案。"
+background: "Wave 1 第一轮基础能力已集成，但后续任务仍主要描述快速问答确认闭环；V1.0 增加学习目标、候选方向、固定路线、逐题学习和阶段总结，需要正式文档化且不能绕过 Gate C。"
+scope:
+  - "归档 V1.0 产品定义，保留版本化目录以承接后续 V2.0/V3.0。"
+  - "新增 V1.0 开发需求基线，明确快速问答与引导式学习的边界、验收场景和执行顺序。"
+  - "新增 RFC-W1-002，记录公共契约和状态机调整的待审方案。"
+  - "更新后续工作流与 Web 任务，使任务入口引用 V1.0 要求。"
+out_of_scope:
+  - "不修改应用代码、数据库迁移、公共 Schema 或模型实现。"
+  - "不解锁 Gate C，不创建业务开发分支或 worktree。"
+  - "不实现 OCR、多篇论文、第二/第三阶段、评分、导出或协作。"
+dependencies:
+  - task_id: "PRODUCT-V1.0-SOURCE"
+    reason: "用户提供并确认的产品定义是本次需求基线的产品来源。"
+
+writable_paths:
+  - docs/product/versions/科研文献引导式学习平台_V1.0产品定义.md
+  - docs/product/v1.0-development-requirements.md
+  - docs/product/wave1-scope-and-decisions.md
+  - docs/product/wave1-product-scope-summary.md
+  - docs/rfcs/RFC-W1-002-guided-learning-v1-product-alignment.md
+  - docs/tasks/backlog/T-W1-005-reading-workflow-api.yaml
+  - docs/tasks/backlog/T-W1-006-web-workbench.yaml
+  - docs/tasks/backlog/T-W1-011-guided-learning-contract-refinement.yaml
+  - docs/CURRENT_STATE.md
+  - docs/devlog/2026-07-13.md
+read_only_paths:
+  - apps/**
+  - packages/**
+  - tests/**
+forbidden_paths:
+  - packages/contracts/**
+  - apps/**
+  - package.json
+  - package-lock.json
+contract_version: "wave1.v1（待 RFC-W1-002 审查后决定兼容扩展或新版本）"
+
+inputs:
+  - name: "V1.0 产品定义"
+    type: "versioned-product-definition"
+    source: "用户提供的科研文献引导式学习平台 V1.0 产品定义"
+outputs:
+  - name: "版本化产品文档、开发需求、RFC 和更新后的任务入口"
+    type: "governed-development-baseline"
+    destination: "docs/product、docs/rfcs、docs/tasks、docs/CURRENT_STATE.md"
+
+acceptance_criteria:
+  - "V1.0 原文位于 docs/product/versions/，目录可直接承接后续版本，未删除外部原文件。"
+  - "开发需求覆盖快速问答兼容、学习目标、2–3 个候选方向、三阶段路线、3–7 道逐题开放题、点评/证据/修正和阶段总结。"
+  - "明确 V1.0 不包含的功能、证据可信度、安全边界和本地部署边界。"
+  - "公共契约和状态机变化通过 RFC-W1-002 进入待审状态，不被文档更新伪装成已冻结。"
+  - "工作流/Web 任务与新需求对齐且仍为 DRAFT/LOCKED；CURRENT_STATE 反映下一轮尚未启动。"
+required_tests:
+  - "文档链接、任务 YAML 结构和关键范围关键词检查。"
+  - "git diff --check。"
+manual_acceptance:
+  - "人类项目负责人确认 V1.0 产品范围和版本归档路径。"
+  - "独立技术审查确认文档更新未自动授权 Gate C。"
+security_considerations:
+  - "不复制真实 API Key、真实用户数据、未获许可论文或本地数据库。"
+  - "产品定义仅作为文档输入，不触发真实外部模型调用。"
+risks:
+  - risk: "V1.0 需求与已冻结 wave1.v1 或数据库状态机不兼容。"
+    mitigation: "先走 RFC-W1-002，由契约 owner 在批准后提出兼容方案和负例测试。"
+rollback_plan: "回退本任务新增/修改的文档；不触碰第一轮已集成代码和数据迁移。"
+deliverables:
+  - "版本化 V1.0 产品定义。"
+  - "V1.0 开发需求基线。"
+  - "RFC-W1-002 和后续任务入口。"
