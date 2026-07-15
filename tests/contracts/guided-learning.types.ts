@@ -26,6 +26,17 @@ const selectDirection = {
   payload: { direction_id: "direction_method" },
 } satisfies GuidedLearningCommand;
 
+const retryCommand = {
+  schema_version: "guided-learning.v1",
+  message_kind: "COMMAND",
+  command_id: "guided_cmd_types_retry",
+  request_id: "req_types_retry",
+  idempotency_key: "idem_types_retry",
+  session_id: "learning_types_1",
+  command: "RETRY",
+  payload: {},
+} satisfies GuidedLearningCommand;
+
 const sessionMessage = {
   schema_version: "guided-learning.v1",
   message_kind: "SESSION",
@@ -46,6 +57,7 @@ const sessionMessage = {
 
 void submitAnswer;
 void selectDirection;
+void retryCommand;
 void sessionMessage;
 
 const commandWithState: GuidedLearningCommand = {
@@ -91,6 +103,30 @@ const answerWithSkipReason: GuidedLearningCommand = {
   payload: { ...submitAnswer.payload, skip_reason: "I_DONT_KNOW" },
 };
 
+const retryWithExtraField: GuidedLearningCommand = {
+  ...retryCommand,
+  payload: {
+    // @ts-expect-error RETRY payload cannot carry server failure context.
+    resume_state: "CREATED",
+  },
+};
+
+const retryWithFailure: GuidedLearningCommand = {
+  ...retryCommand,
+  payload: {
+    // @ts-expect-error RETRY payload cannot carry a failure object.
+    failure: {},
+  },
+};
+
+const retryWithEvidenceReady: GuidedLearningCommand = {
+  ...retryCommand,
+  payload: {
+    // @ts-expect-error evidenceReady is server-computed, not client input.
+    evidenceReady: true,
+  },
+};
+
 const oldVersion: ContractVersion = "api.v1";
 const guidedVersion: SupportedContractVersion = "guided-learning.v1";
 void oldVersion;
@@ -108,5 +144,8 @@ void payloadWithVerification;
 void commandFromSession;
 void directionWithStage;
 void answerWithSkipReason;
+void retryWithExtraField;
+void retryWithFailure;
+void retryWithEvidenceReady;
 void oldVersionCannotBeGuided;
 void unsupportedVersion;

@@ -134,3 +134,46 @@ idempotency validation。
 `ContractVersion` 继续表示旧快速问答版本集合，以保持既有消费者的兼容语义。
 `SupportedContractVersion` 才表示当前所有支持的版本，并包含
 `guided-learning.v1`；两者的区别由 `SUPPORTED_CONTRACT_VERSIONS` 明确表达。
+
+## T-W1-011 审查修复约束
+
+### Evidence 确认门
+
+`FEEDBACK_READY` 和 `CONFIRMED` 都必须能够独立通过 Evidence 一致性校验。
+每个 Evidence ID 在会话内唯一，Evidence 的 `document_version_id` 必须与会话
+文档一致；被 `PAPER_FACT`、`AUTHOR_CLAIM` 或 `AGENT_INFERENCE` 引用的 Evidence
+必须存在且为 `VERIFIED`，引用不能重复。`INSUFFICIENT` claim 不得带 Evidence
+引用。缺少引用、文档不匹配、未验证或重复引用分别使用稳定的一致性错误码，不能
+把未验证 Evidence 当作可确认结果。
+
+`CONFIRM_QUESTION` 的 Evidence 就绪性是服务端上下文，不属于客户端
+`COMMAND` payload。缺少上下文拒绝为 `EVIDENCE_CONFIRMATION_CONTEXT_REQUIRED`，
+显式未就绪拒绝为 `EVIDENCE_NOT_READY`，只有服务端明确传入就绪结果时才允许推进。
+
+### 失败恢复形状
+
+`RETRYABLE_FAILURE` 和 `FAILED` 的 `failure.resume_state` 必须与会话快照的可恢复
+形状一致。`CREATED` 不得残留方向、路线、题目或摘要；`ROUTE_LOCKED` 和
+`QUESTIONS_GENERATING` 不得残留题目；`ANSWER_SUBMITTED` 必须指向一题带用户回答的
+`ANSWERED` 题，且不得残留点评、参考答案、Evidence 或跳过原因；
+`QUESTION_COMPLETED` 必须指向 `CONFIRMED` 或 `SKIPPED` 题；
+`SUMMARY_GENERATING` 必须包含全部已解决题目，且不得包含当前题指针或摘要。
+缺字段、禁用字段和整体形状分别使用稳定错误码。`RETRY` 只接受服务端完成形状
+校验的上下文；客户端 retry payload 固定为空对象。
+
+### Summary 与路线阶段状态
+
+进入 `SUMMARY_GENERATING` 前，所有题目必须已 `CONFIRMED` 或 `SKIPPED`，且当前题
+指针和 `stage_summary` 都为空。处理中的状态及其失败恢复状态要求规范路线的
+`UNDERSTAND` 阶段为 `OPEN`；只有 `STAGE_COMPLETED` 和 `SESSION_COMPLETED` 允许
+该阶段为 `COMPLETED`。状态与路线阶段不一致时返回 `ROUTE_STAGE_STATUS_MISMATCH`。
+
+### 服务端校验调用顺序
+
+服务端适配器必须按以下顺序处理请求：
+
+1. 校验 `guided-learning.v1` JSON Schema，拒绝客户端额外字段。
+2. 校验会话一致性，包括 Evidence、失败恢复形状和 summary/route 联动。
+3. 对 `CONFIRM_QUESTION` 计算并传入服务端 Evidence 就绪上下文。
+4. 执行状态转移；`RETRY` 只能使用已校验的服务端恢复上下文。
+5. 最后执行幂等键与 request fingerprint 校验并持久化新的 revision。

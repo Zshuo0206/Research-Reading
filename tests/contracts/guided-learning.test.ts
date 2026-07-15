@@ -50,14 +50,19 @@ function readSessionFixture(name: string): Record<string, unknown> {
 }
 
 const sessionFixtureNames = [
+  "created.json",
   "directions-pending.json",
   "route-locked.json",
   "questions-generating.json",
+  "answer-submitted.json",
+  "feedback-ready.json",
   "question-feedback-confirmed.json",
   "question-skip.json",
   "summary-generating.json",
   "stage-summary.json",
   "session-completed.json",
+  "retryable-failure.json",
+  "failed.json",
 ] as const;
 
 const commandContext = {
@@ -356,6 +361,7 @@ describe("guided-learning.v1 contract", () => {
           state: "RETRYABLE_FAILURE",
           event: "RETRY",
           failureContext: context,
+          resumeShapeValidated: true,
           ...commandContext,
         }),
       ).toMatchObject({ outcome: "APPLIED", to_state: context.resume_state });
@@ -375,9 +381,354 @@ describe("guided-learning.v1 contract", () => {
         state: "FAILED",
         event: "RETRY",
         failureContext: failure("GENERATE_DIRECTIONS", "CREATED", "PERMANENT"),
+        resumeShapeValidated: true,
         ...commandContext,
       }),
     ).toMatchObject({ outcome: "REJECTED", reason: "ILLEGAL_TRANSITION" });
+  });
+
+  it("requires verified, document-local Evidence before feedback can be confirmed", () => {
+    const source = readSessionFixture("feedback-ready.json");
+    const sourceSession = source.session as Record<string, unknown>;
+    const sourceQuestions = sourceSession.questions as Array<
+      Record<string, unknown>
+    >;
+
+    const mutate = (
+      fn: (
+        session: Record<string, unknown>,
+        currentQuestion: Record<string, unknown>,
+      ) => void,
+      session = source,
+    ) => {
+      const copy = structuredClone(session) as Record<string, unknown>;
+      const value = copy.session as Record<string, unknown>;
+      const questions = value.questions as Array<Record<string, unknown>>;
+      fn(value, questions[1]);
+      return validateGuidedLearningSessionConsistency(value as never);
+    };
+
+    expect(
+      validateGuidedLearningSessionConsistency(sourceSession as never),
+    ).toMatchObject({ valid: true, errors: [] });
+    for (const status of ["PENDING", "INVALID"] as const) {
+      const result = mutate((_session, question) => {
+        const evidence = question.evidence as Array<Record<string, unknown>>;
+        evidence[0].verification_status = status;
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors.map((error) => error.code)).toContain(
+        "EVIDENCE_NOT_VERIFIED",
+      );
+    }
+    expect(
+      mutate((_session, question) => {
+        const referenceAnswer = question.reference_answer as Record<
+          string,
+          unknown
+        >;
+        const claims = referenceAnswer.claims as Array<Record<string, unknown>>;
+        claims[0].evidence_refs = ["evidence_missing"];
+      }),
+    ).toMatchObject({ valid: false });
+    expect(
+      mutate((_session, question) => {
+        const evidence = question.evidence as Array<Record<string, unknown>>;
+        evidence.push({ ...evidence[0] });
+      }),
+    ).toMatchObject({ valid: false });
+    const duplicateAcrossQuestions = mutate((session, question) => {
+      const questions = session.questions as Array<Record<string, unknown>>;
+      const firstEvidence = (
+        questions[0].evidence as Array<Record<string, unknown>>
+      )[0];
+      const currentEvidence = question.evidence as Array<
+        Record<string, unknown>
+      >;
+      currentEvidence[0].evidence_span_id = firstEvidence.evidence_span_id;
+    });
+    expect(
+      duplicateAcrossQuestions.errors.map((error) => error.code),
+    ).toContain("DUPLICATE_EVIDENCE_ID");
+    expect(
+      mutate((_session, question) => {
+        const evidence = question.evidence as Array<Record<string, unknown>>;
+        evidence[0].document_version_id = "docv_other";
+      }),
+    ).toMatchObject({ valid: false });
+    const missingEvidence = mutate((_session, question) => {
+      const referenceAnswer = question.reference_answer as Record<
+        string,
+        unknown
+      >;
+      const claims = referenceAnswer.claims as Array<Record<string, unknown>>;
+      claims[0].evidence_refs = ["evidence_missing"];
+    });
+    expect(missingEvidence.errors.map((error) => error.code)).toContain(
+      "EVIDENCE_REFERENCE_NOT_FOUND",
+    );
+    expect(
+      mutate((_session, question) => {
+        const evidence = question.evidence as Array<Record<string, unknown>>;
+        evidence[0].verification_status = "PENDING";
+      }),
+    ).toMatchObject({ valid: false });
+    expect(
+      mutate((_session, question) => {
+        const referenceAnswer = question.reference_answer as Record<
+          string,
+          unknown
+        >;
+        const claims = referenceAnswer.claims as Array<Record<string, unknown>>;
+        claims[0].claim_type = "INSUFFICIENT_EVIDENCE";
+        claims[0].evidence_refs = ["evidence_feedback_2"];
+      }),
+    ).toMatchObject({ valid: false });
+    expect(
+      mutate((_session, question) => {
+        const referenceAnswer = question.reference_answer as Record<
+          string,
+          unknown
+        >;
+        const claims = referenceAnswer.claims as Array<Record<string, unknown>>;
+        claims[0].evidence_refs = [
+          "evidence_feedback_2",
+          "evidence_feedback_2",
+        ];
+      }),
+    ).toMatchObject({ valid: false });
+
+    const confirmed = structuredClone(source) as Record<string, unknown>;
+    const confirmedSession = confirmed.session as Record<string, unknown>;
+    confirmedSession.state = "QUESTION_COMPLETED";
+    const confirmedQuestions = confirmedSession.questions as Array<
+      Record<string, unknown>
+    >;
+    confirmedQuestions[1].status = "CONFIRMED";
+    confirmedQuestions[1].confirmation_status = "CONFIRMED";
+    expect(
+      validateGuidedLearningSessionConsistency(confirmedSession as never),
+    ).toMatchObject({ valid: true, errors: [] });
+    confirmedQuestions[1].evidence = [
+      {
+        ...(
+          confirmedQuestions[1].evidence as Array<Record<string, unknown>>
+        )[0],
+        verification_status: "INVALID",
+      },
+    ];
+    expect(
+      validateGuidedLearningSessionConsistency(confirmedSession as never),
+    ).toMatchObject({ valid: false });
+    expect(sourceQuestions.length).toBe(3);
+  });
+
+  it("requires server Evidence readiness context for CONFIRM_QUESTION", () => {
+    const base = {
+      state: "FEEDBACK_READY" as const,
+      event: "CONFIRM_QUESTION" as const,
+      ...commandContext,
+    };
+    expect(applyGuidedLearningEvent(base)).toMatchObject({
+      outcome: "REJECTED",
+      reason: "EVIDENCE_CONFIRMATION_CONTEXT_REQUIRED",
+    });
+    expect(
+      applyGuidedLearningEvent({ ...base, evidenceReady: false }),
+    ).toMatchObject({ outcome: "REJECTED", reason: "EVIDENCE_NOT_READY" });
+    expect(
+      applyGuidedLearningEvent({ ...base, canConfirmCurrentQuestion: true }),
+    ).toMatchObject({ outcome: "APPLIED", to_state: "QUESTION_COMPLETED" });
+  });
+
+  it("validates every failure resume shape and requires validated retry context", () => {
+    const makeFailureSession = (
+      fixtureName: string,
+      context: GuidedLearningFailure,
+    ) => {
+      const fixture = readSessionFixture(fixtureName);
+      const session = structuredClone(fixture.session) as Record<
+        string,
+        unknown
+      >;
+      session.state =
+        context.failure_class === "PERMANENT" ? "FAILED" : "RETRYABLE_FAILURE";
+      session.failure = context;
+      return session;
+    };
+    const expectCode = (session: Record<string, unknown>, code: string) => {
+      const result = validateGuidedLearningSessionConsistency(session as never);
+      expect(result.valid).toBe(false);
+      expect(result.errors.map((error) => error.code)).toContain(code);
+    };
+
+    const validCases: Array<[string, GuidedLearningFailure]> = [
+      ["created.json", failure("GENERATE_DIRECTIONS", "CREATED")],
+      ["route-locked.json", failure("GENERATE_QUESTIONS", "ROUTE_LOCKED")],
+      [
+        "questions-generating.json",
+        failure("GENERATE_QUESTIONS", "QUESTIONS_GENERATING"),
+      ],
+      [
+        "answer-submitted.json",
+        failure("GENERATE_FEEDBACK", "ANSWER_SUBMITTED"),
+      ],
+      [
+        "summary-generating.json",
+        failure("GENERATE_STAGE_SUMMARY", "SUMMARY_GENERATING"),
+      ],
+    ];
+    for (const [fixtureName, context] of validCases)
+      expect(
+        validateGuidedLearningSessionConsistency(
+          makeFailureSession(fixtureName, context) as never,
+        ),
+        `${fixtureName}:${context.resume_state}`,
+      ).toMatchObject({ valid: true, errors: [] });
+
+    const completedFailure = makeFailureSession(
+      "question-skip.json",
+      failure("GENERATE_STAGE_SUMMARY", "QUESTION_COMPLETED"),
+    );
+    const completedQuestions = completedFailure.questions as Array<
+      Record<string, unknown>
+    >;
+    completedQuestions[1].status = "SKIPPED";
+    completedQuestions[1].confirmation_status = "SKIPPED";
+    completedQuestions[1].skip_reason = "I_DONT_KNOW";
+    expect(
+      validateGuidedLearningSessionConsistency(completedFailure as never),
+    ).toMatchObject({ valid: true, errors: [] });
+
+    const createdWithDirections = makeFailureSession(
+      "route-locked.json",
+      failure("GENERATE_DIRECTIONS", "CREATED"),
+    );
+    expectCode(createdWithDirections, "FAILURE_RESUME_SHAPE_INVALID");
+    expectCode(createdWithDirections, "RESUME_STATE_FORBIDDEN_FIELD_PRESENT");
+
+    const routeMissingStage = makeFailureSession(
+      "route-locked.json",
+      failure("GENERATE_QUESTIONS", "ROUTE_LOCKED"),
+    );
+    delete routeMissingStage.current_stage_id;
+    expectCode(routeMissingStage, "RESUME_STATE_REQUIRED_FIELD_MISSING");
+
+    const routeWithQuestions = makeFailureSession(
+      "route-locked.json",
+      failure("GENERATE_QUESTIONS", "ROUTE_LOCKED"),
+    );
+    routeWithQuestions.questions = [];
+    expectCode(routeWithQuestions, "RESUME_STATE_FORBIDDEN_FIELD_PRESENT");
+
+    const generatingWithQuestions = makeFailureSession(
+      "questions-generating.json",
+      failure("GENERATE_QUESTIONS", "QUESTIONS_GENERATING"),
+    );
+    generatingWithQuestions.questions = [];
+    expectCode(generatingWithQuestions, "RESUME_STATE_FORBIDDEN_FIELD_PRESENT");
+
+    const answerNotSubmitted = makeFailureSession(
+      "answer-submitted.json",
+      failure("GENERATE_FEEDBACK", "ANSWER_SUBMITTED"),
+    );
+    const answerQuestions = answerNotSubmitted.questions as Array<
+      Record<string, unknown>
+    >;
+    answerQuestions[1].status = "ACTIVE";
+    answerQuestions[1].confirmation_status = "PENDING";
+    delete answerQuestions[1].user_answer;
+    expectCode(answerNotSubmitted, "RESUME_STATE_REQUIRED_FIELD_MISSING");
+
+    const completedUnresolved = makeFailureSession(
+      "question-skip.json",
+      failure("GENERATE_STAGE_SUMMARY", "QUESTION_COMPLETED"),
+    );
+    completedUnresolved.state = "RETRYABLE_FAILURE";
+    expectCode(completedUnresolved, "RESUME_STATE_REQUIRED_FIELD_MISSING");
+
+    const summaryUnresolved = makeFailureSession(
+      "summary-generating.json",
+      failure("GENERATE_STAGE_SUMMARY", "SUMMARY_GENERATING"),
+    );
+    const summaryQuestions = summaryUnresolved.questions as Array<
+      Record<string, unknown>
+    >;
+    summaryQuestions[1].status = "ACTIVE";
+    summaryQuestions[1].confirmation_status = "PENDING";
+    expectCode(summaryUnresolved, "COMPLETION_REQUIRES_RESOLVED_QUESTIONS");
+
+    const summaryWithResult = makeFailureSession(
+      "summary-generating.json",
+      failure("GENERATE_STAGE_SUMMARY", "SUMMARY_GENERATING"),
+    );
+    summaryWithResult.stage_summary = {
+      stage_id: "UNDERSTAND",
+      status: "GENERATED",
+      completed_question_orders: [],
+      skipped_question_orders: [1, 2, 3],
+      key_mastery_points: ["x"],
+      major_weak_points: ["y"],
+      next_stage_hint: "z",
+    };
+    expectCode(summaryWithResult, "RESUME_STATE_FORBIDDEN_FIELD_PRESENT");
+
+    expect(
+      applyGuidedLearningEvent({
+        state: "RETRYABLE_FAILURE",
+        event: "RETRY",
+        failureContext: failure("GENERATE_QUESTIONS", "ROUTE_LOCKED"),
+        ...commandContext,
+      }),
+    ).toMatchObject({
+      outcome: "REJECTED",
+      reason: "FAILURE_RESUME_SHAPE_REQUIRED",
+    });
+  });
+
+  it("keeps summary completion and route stage status aligned", () => {
+    const summary = readSessionFixture("summary-generating.json");
+    const summarySession = summary.session as Record<string, unknown>;
+    const summaryQuestions = summarySession.questions as Array<
+      Record<string, unknown>
+    >;
+    summaryQuestions[1].status = "ACTIVE";
+    summaryQuestions[1].confirmation_status = "PENDING";
+    expect(
+      validateGuidedLearningSessionConsistency(summarySession as never),
+    ).toMatchObject({ valid: false });
+    expect(
+      validateGuidedLearningSessionConsistency(
+        summarySession as never,
+      ).errors.map((error) => error.code),
+    ).toContain("COMPLETION_REQUIRES_RESOLVED_QUESTIONS");
+
+    for (const fixtureName of [
+      "stage-summary.json",
+      "session-completed.json",
+    ] as const) {
+      const fixture = readSessionFixture(fixtureName);
+      const session = fixture.session as Record<string, unknown>;
+      const route = session.route as Record<string, unknown>;
+      const stages = route.stages as Array<Record<string, unknown>>;
+      stages[0].status = "OPEN";
+      const result = validateGuidedLearningSessionConsistency(session as never);
+      expect(result.errors.map((error) => error.code)).toContain(
+        "ROUTE_STAGE_STATUS_MISMATCH",
+      );
+    }
+    const processing = readSessionFixture("question-feedback-confirmed.json");
+    const processingSession = processing.session as Record<string, unknown>;
+    const processingRoute = processingSession.route as Record<string, unknown>;
+    const processingStages = processingRoute.stages as Array<
+      Record<string, unknown>
+    >;
+    processingStages[0].status = "COMPLETED";
+    expect(
+      validateGuidedLearningSessionConsistency(
+        processingSession as never,
+      ).errors.map((error) => error.code),
+    ).toContain("ROUTE_STAGE_STATUS_MISMATCH");
   });
 
   it("binds idempotency to session, event and request fingerprint", () => {

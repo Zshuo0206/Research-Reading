@@ -231,7 +231,7 @@ export type GuidedLearningAnswerPayload =
   };
 export type GuidedLearningSkipQuestionPayload =
   GuidedLearningQuestionPointerPayload & { reason: "I_DONT_KNOW" };
-export type GuidedLearningRetryPayload = Record<never, never>;
+export type GuidedLearningRetryPayload = Record<string, never>;
 
 interface GuidedLearningCommandBase {
   schema_version: typeof GUIDED_LEARNING_CONTRACT_VERSION;
@@ -464,8 +464,11 @@ export type GuidedLearningTransitionResult =
         | "CURRENT_QUESTION_NOT_COMPLETE"
         | "REMAINING_QUESTION_CONTEXT_REQUIRED"
         | "FAILURE_CONTEXT_REQUIRED"
+        | "FAILURE_RESUME_SHAPE_REQUIRED"
         | "INVALID_FAILURE_CONTEXT"
         | "INVALID_FAILURE_RESUME_STATE"
+        | "EVIDENCE_CONFIRMATION_CONTEXT_REQUIRED"
+        | "EVIDENCE_NOT_READY"
         | "ILLEGAL_TRANSITION";
     };
 
@@ -480,6 +483,12 @@ export interface ApplyGuidedLearningEventInput {
   failureContext?: GuidedLearningFailure;
   /** Alias accepted for server adapters; never comes from a command payload. */
   failure?: GuidedLearningFailure;
+  /** Server-computed confirmation context; never comes from COMMAND payload. */
+  evidenceReady?: boolean;
+  /** More explicit alias for server adapters; never comes from COMMAND payload. */
+  canConfirmCurrentQuestion?: boolean;
+  /** Set only after the caller has validated the complete failure Session shape. */
+  resumeShapeValidated?: boolean;
   resultRevision?: number;
 }
 
@@ -521,6 +530,8 @@ export function applyGuidedLearningEvent(
       return rejected(input.state, "ILLEGAL_TRANSITION");
     const failure = input.failureContext ?? input.failure;
     if (!failure) return rejected(input.state, "FAILURE_CONTEXT_REQUIRED");
+    if (input.resumeShapeValidated !== true)
+      return rejected(input.state, "FAILURE_RESUME_SHAPE_REQUIRED");
     if (failure.failure_class !== "RETRYABLE")
       return rejected(input.state, "INVALID_FAILURE_CONTEXT");
     if (!isValidFailureResume(failure.failed_operation, failure.resume_state))
@@ -565,6 +576,15 @@ export function applyGuidedLearningEvent(
       input.hasRemainingQuestions ? "AWAITING_ANSWER" : "SUMMARY_GENERATING",
       "CLIENT",
     );
+  }
+
+  if (input.event === "CONFIRM_QUESTION" && input.state === "FEEDBACK_READY") {
+    const evidenceReady =
+      input.canConfirmCurrentQuestion ?? input.evidenceReady;
+    if (evidenceReady === undefined)
+      return rejected(input.state, "EVIDENCE_CONFIRMATION_CONTEXT_REQUIRED");
+    if (evidenceReady !== true)
+      return rejected(input.state, "EVIDENCE_NOT_READY");
   }
 
   const transition = normalTransitions.find(
@@ -657,6 +677,13 @@ export const GUIDED_LEARNING_CONSISTENCY_ERROR_CODES = [
   "FUTURE_QUESTION_NOT_UNSEEN",
   "PREVIOUS_QUESTION_NOT_COMPLETED",
   "QUESTION_STATE_FIELDS_INVALID",
+  "DUPLICATE_EVIDENCE_ID",
+  "EVIDENCE_DOCUMENT_MISMATCH",
+  "EVIDENCE_REFERENCE_NOT_FOUND",
+  "EVIDENCE_NOT_VERIFIED",
+  "EVIDENCE_REFERENCE_DUPLICATE",
+  "INSUFFICIENT_EVIDENCE_REFERENCE_INVALID",
+  "EVIDENCE_REQUIRED_FOR_SUPPORTED_CLAIM",
   "SUMMARY_REQUIRED",
   "SUMMARY_ORDERS_INVALID",
   "SUMMARY_ORDERS_OVERLAP",
@@ -666,6 +693,10 @@ export const GUIDED_LEARNING_CONSISTENCY_ERROR_CODES = [
   "FAILURE_STATE_MISMATCH",
   "FAILURE_NOT_ALLOWED",
   "FAILURE_RESUME_MISMATCH",
+  "FAILURE_RESUME_SHAPE_INVALID",
+  "RESUME_STATE_REQUIRED_FIELD_MISSING",
+  "RESUME_STATE_FORBIDDEN_FIELD_PRESENT",
+  "ROUTE_STAGE_STATUS_MISMATCH",
 ] as const;
 
 export type GuidedLearningConsistencyErrorCode =
@@ -782,6 +813,11 @@ export function validateGuidedLearningSessionConsistency(
       )
     )
       add("NON_CANONICAL_ROUTE", "route must be the locked V1 route", "route");
+    validateRouteStageStatus(
+      value.route as UnknownRecord,
+      String(resumeState),
+      add,
+    );
   }
   if (!routeRequired && value.route !== undefined)
     add(
@@ -815,6 +851,7 @@ export function validateGuidedLearningSessionConsistency(
 
   const questionByOrder = new Map<number, UnknownRecord>();
   const questionIds = new Set<string>();
+  const sessionEvidenceIds = new Map<string, string>();
   if (questions) {
     questions.forEach((question, index) => {
       if (!isRecord(question)) return;
@@ -851,6 +888,17 @@ export function validateGuidedLearningSessionConsistency(
           `questions[${index}].stage_id`,
         );
       validateQuestionFields(question, add, `questions[${index}]`);
+      if (
+        question.status === "FEEDBACK_READY" ||
+        question.status === "CONFIRMED"
+      )
+        validateQuestionEvidence(
+          question,
+          value.document_version_id,
+          sessionEvidenceIds,
+          add,
+          `questions[${index}]`,
+        );
     });
     const orders = questions.map((question) =>
       isRecord(question) ? question.order : undefined,
@@ -991,7 +1039,12 @@ export function validateGuidedLearningSessionConsistency(
   }
 
   const completionStates = new Set(["STAGE_COMPLETED", "SESSION_COMPLETED"]);
-  if (completionStates.has(String(resumeState))) {
+  const resolvedQuestionStates = new Set([
+    "SUMMARY_GENERATING",
+    "STAGE_COMPLETED",
+    "SESSION_COMPLETED",
+  ]);
+  if (resolvedQuestionStates.has(String(resumeState))) {
     if (!questions || questions.length === 0)
       add(
         "COMPLETION_REQUIRES_QUESTIONS",
@@ -1010,7 +1063,11 @@ export function validateGuidedLearningSessionConsistency(
         "all questions must be CONFIRMED or SKIPPED",
         "questions",
       );
-    if (questions && !isRecord(value.stage_summary))
+    if (
+      completionStates.has(String(resumeState)) &&
+      questions &&
+      !isRecord(value.stage_summary)
+    )
       add(
         "SUMMARY_REQUIRED",
         "completed states require stage_summary",
@@ -1068,7 +1125,328 @@ export function validateGuidedLearningSessionConsistency(
     );
   }
 
+  if (isGuidedLearningResumeState(resumeState))
+    validateResumeStateShape(value, resumeState, add);
+
   return { valid: errors.length === 0, errors };
+}
+
+function validateRouteStageStatus(
+  route: UnknownRecord,
+  state: string,
+  add: (
+    code: GuidedLearningConsistencyErrorCode,
+    message: string,
+    path?: string,
+  ) => void,
+): void {
+  const stages = Array.isArray(route.stages) ? route.stages : [];
+  const understand = isRecord(stages[0]) ? stages[0] : undefined;
+  const expectedStatus = ["STAGE_COMPLETED", "SESSION_COMPLETED"].includes(
+    state,
+  )
+    ? "COMPLETED"
+    : "OPEN";
+  if (understand?.status !== expectedStatus)
+    add(
+      "ROUTE_STAGE_STATUS_MISMATCH",
+      `UNDERSTAND must be ${expectedStatus} for this state`,
+      "route.stages[0].status",
+    );
+}
+
+function validateQuestionEvidence(
+  question: UnknownRecord,
+  sessionDocumentVersionId: unknown,
+  sessionEvidenceIds: Map<string, string>,
+  add: (
+    code: GuidedLearningConsistencyErrorCode,
+    message: string,
+    path?: string,
+  ) => void,
+  path: string,
+): void {
+  const evidence = Array.isArray(question.evidence)
+    ? question.evidence.filter(isRecord)
+    : [];
+  const evidenceById = new Map<string, UnknownRecord>();
+  for (const [index, span] of evidence.entries()) {
+    const evidenceId = span.evidence_span_id;
+    if (typeof evidenceId !== "string") continue;
+    if (evidenceById.has(evidenceId) || sessionEvidenceIds.has(evidenceId))
+      add(
+        "DUPLICATE_EVIDENCE_ID",
+        "evidence_span_id values must be unique within a session",
+        `${path}.evidence[${index}].evidence_span_id`,
+      );
+    else {
+      evidenceById.set(evidenceId, span);
+      sessionEvidenceIds.set(
+        evidenceId,
+        `${path}.evidence[${index}].evidence_span_id`,
+      );
+    }
+    if (span.document_version_id !== sessionDocumentVersionId)
+      add(
+        "EVIDENCE_DOCUMENT_MISMATCH",
+        "Evidence must belong to the Session document version",
+        `${path}.evidence[${index}].document_version_id`,
+      );
+    if (span.verification_status !== "VERIFIED")
+      add(
+        "EVIDENCE_NOT_VERIFIED",
+        "FEEDBACK_READY and CONFIRMED require VERIFIED Evidence",
+        `${path}.evidence[${index}].verification_status`,
+      );
+  }
+
+  const referenceAnswer = isRecord(question.reference_answer)
+    ? question.reference_answer
+    : undefined;
+  const claims =
+    referenceAnswer && Array.isArray(referenceAnswer.claims)
+      ? referenceAnswer.claims.filter(isRecord)
+      : [];
+  for (const [claimIndex, claim] of claims.entries()) {
+    const refs = Array.isArray(claim.evidence_refs)
+      ? claim.evidence_refs.filter(
+          (ref): ref is string => typeof ref === "string",
+        )
+      : [];
+    if (claim.claim_type === "INSUFFICIENT_EVIDENCE") {
+      if (refs.length > 0)
+        add(
+          "INSUFFICIENT_EVIDENCE_REFERENCE_INVALID",
+          "INSUFFICIENT_EVIDENCE claims cannot cite Evidence",
+          `${path}.reference_answer.claims[${claimIndex}].evidence_refs`,
+        );
+      continue;
+    }
+    if (
+      claim.claim_type === "PAPER_FACT" ||
+      claim.claim_type === "AUTHOR_CLAIM" ||
+      claim.claim_type === "AGENT_INFERENCE"
+    ) {
+      if (refs.length === 0)
+        add(
+          "EVIDENCE_REQUIRED_FOR_SUPPORTED_CLAIM",
+          "supported claims must cite at least one Evidence span",
+          `${path}.reference_answer.claims[${claimIndex}].evidence_refs`,
+        );
+      const seenRefs = new Set<string>();
+      for (const [refIndex, ref] of refs.entries()) {
+        if (seenRefs.has(ref))
+          add(
+            "EVIDENCE_REFERENCE_DUPLICATE",
+            "a claim cannot cite the same Evidence span twice",
+            `${path}.reference_answer.claims[${claimIndex}].evidence_refs[${refIndex}]`,
+          );
+        seenRefs.add(ref);
+        const citedEvidence = evidenceById.get(ref);
+        if (!citedEvidence) {
+          add(
+            "EVIDENCE_REFERENCE_NOT_FOUND",
+            "claim evidence_ref must reference an Evidence span in the question",
+            `${path}.reference_answer.claims[${claimIndex}].evidence_refs[${refIndex}]`,
+          );
+        } else if (citedEvidence.verification_status !== "VERIFIED") {
+          add(
+            "EVIDENCE_NOT_VERIFIED",
+            "supported claims may cite only VERIFIED Evidence",
+            `${path}.reference_answer.claims[${claimIndex}].evidence_refs[${refIndex}]`,
+          );
+        }
+      }
+    }
+  }
+}
+
+function validateResumeStateShape(
+  session: UnknownRecord,
+  resumeState: GuidedLearningResumeState,
+  add: (
+    code: GuidedLearningConsistencyErrorCode,
+    message: string,
+    path?: string,
+  ) => void,
+): void {
+  const has = (key: string) => Object.hasOwn(session, key);
+  const required = (condition: boolean, key: string) => {
+    if (!condition)
+      add(
+        "RESUME_STATE_REQUIRED_FIELD_MISSING",
+        `${resumeState} requires ${key}`,
+        key,
+      );
+  };
+  const forbidden = (key: string) => {
+    if (has(key))
+      add(
+        "RESUME_STATE_FORBIDDEN_FIELD_PRESENT",
+        `${resumeState} must not contain ${key}`,
+        key,
+      );
+  };
+  const questions = Array.isArray(session.questions)
+    ? session.questions.filter(isRecord)
+    : [];
+  const currentOrder = session.current_question_order;
+  const currentQuestion =
+    typeof currentOrder === "number"
+      ? questions.find((question) => question.order === currentOrder)
+      : undefined;
+
+  switch (resumeState) {
+    case "CREATED":
+      if (
+        !Array.isArray(session.candidate_directions) ||
+        session.candidate_directions.length !== 0
+      )
+        add(
+          "FAILURE_RESUME_SHAPE_INVALID",
+          "CREATED resume state must have empty candidate_directions",
+          "candidate_directions",
+        );
+      for (const key of [
+        "selected_direction_id",
+        "route",
+        "current_stage_id",
+        "current_question_order",
+        "questions",
+        "stage_summary",
+      ])
+        forbidden(key);
+      break;
+    case "ROUTE_LOCKED":
+    case "QUESTIONS_GENERATING":
+      required(
+        Array.isArray(session.candidate_directions) &&
+          session.candidate_directions.length > 0,
+        "candidate_directions",
+      );
+      required(
+        typeof session.selected_direction_id === "string",
+        "selected_direction_id",
+      );
+      required(
+        isRecord(session.route) &&
+          isCanonicalGuidedLearningRoute(
+            session.route as unknown as GuidedLearningRoute,
+          ),
+        "canonical route",
+      );
+      required(session.current_stage_id === "UNDERSTAND", "current_stage_id");
+      for (const key of [
+        "questions",
+        "current_question_order",
+        "stage_summary",
+      ])
+        forbidden(key);
+      break;
+    case "ANSWER_SUBMITTED":
+      required(
+        typeof session.selected_direction_id === "string",
+        "selected_direction_id",
+      );
+      required(
+        isRecord(session.route) &&
+          isCanonicalGuidedLearningRoute(
+            session.route as unknown as GuidedLearningRoute,
+          ),
+        "canonical route",
+      );
+      required(session.current_stage_id === "UNDERSTAND", "current_stage_id");
+      required(questions.length > 0, "questions");
+      required(typeof currentOrder === "number", "current_question_order");
+      required(
+        currentQuestion?.status === "ANSWERED",
+        "current ANSWERED question",
+      );
+      if (currentQuestion) {
+        required(
+          typeof currentQuestion.user_answer === "string",
+          "user_answer",
+        );
+        for (const key of [
+          "feedback",
+          "reference_answer",
+          "evidence",
+          "skip_reason",
+        ])
+          if (Object.hasOwn(currentQuestion, key))
+            add(
+              "RESUME_STATE_FORBIDDEN_FIELD_PRESENT",
+              `ANSWER_SUBMITTED current question must not contain ${key}`,
+              `questions[${currentOrder}].${key}`,
+            );
+      }
+      break;
+    case "QUESTION_COMPLETED":
+      required(
+        typeof session.selected_direction_id === "string",
+        "selected_direction_id",
+      );
+      required(
+        isRecord(session.route) &&
+          isCanonicalGuidedLearningRoute(
+            session.route as unknown as GuidedLearningRoute,
+          ),
+        "canonical route",
+      );
+      required(session.current_stage_id === "UNDERSTAND", "current_stage_id");
+      required(questions.length > 0, "questions");
+      required(typeof currentOrder === "number", "current_question_order");
+      required(
+        currentQuestion?.status === "CONFIRMED" ||
+          currentQuestion?.status === "SKIPPED",
+        "resolved current question",
+      );
+      break;
+    case "SUMMARY_GENERATING":
+      required(
+        typeof session.selected_direction_id === "string",
+        "selected_direction_id",
+      );
+      required(
+        isRecord(session.route) &&
+          isCanonicalGuidedLearningRoute(
+            session.route as unknown as GuidedLearningRoute,
+          ),
+        "canonical route",
+      );
+      required(session.current_stage_id === "UNDERSTAND", "current_stage_id");
+      required(questions.length > 0, "questions");
+      if (
+        questions.some(
+          (question) =>
+            !["CONFIRMED", "SKIPPED"].includes(String(question.status)),
+        )
+      )
+        add(
+          "COMPLETION_REQUIRES_RESOLVED_QUESTIONS",
+          "SUMMARY_GENERATING requires every question to be CONFIRMED or SKIPPED",
+          "questions",
+        );
+      forbidden("current_question_order");
+      forbidden("stage_summary");
+      break;
+  }
+}
+
+function isGuidedLearningResumeState(
+  value: unknown,
+): value is GuidedLearningResumeState {
+  return (
+    typeof value === "string" &&
+    [
+      "CREATED",
+      "ROUTE_LOCKED",
+      "QUESTIONS_GENERATING",
+      "ANSWER_SUBMITTED",
+      "QUESTION_COMPLETED",
+      "SUMMARY_GENERATING",
+    ].includes(value)
+  );
 }
 
 function validateQuestionFields(
