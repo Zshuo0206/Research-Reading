@@ -10,7 +10,14 @@
     "state": "STAGE_COMPLETED",
     "session_revision": 14,
     "state_version": 14,
-    "candidate_directions": [],
+    "candidate_directions": [
+      {
+        "direction_id": "direction_method",
+        "title": "理解方法设计",
+        "description": "梳理论文方法的整体框架和关键模块。",
+        "selection_basis": "与用户想理解方法设计的目标最直接相关。"
+      }
+    ],
     "selected_direction_id": "direction_method",
     "route": {
       "route_id": "route_fixture_summary",

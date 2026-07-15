@@ -13,7 +13,7 @@ project_id: string
 document_version_id: string
 mode: "GUIDED_LEARNING"
 learning_goal: string
-state: ("CREATED" | "DIRECTIONS_READY" | "AWAITING_DIRECTION_SELECTION" | "ROUTE_LOCKED" | "STAGE_IN_PROGRESS" | "AWAITING_ANSWER" | "ANSWER_SUBMITTED" | "FEEDBACK_READY" | "QUESTION_COMPLETED" | "STAGE_COMPLETED" | "SESSION_COMPLETED" | "RETRYABLE_FAILURE" | "FAILED")
+state: ("CREATED" | "AWAITING_DIRECTION_SELECTION" | "ROUTE_LOCKED" | "QUESTIONS_GENERATING" | "AWAITING_ANSWER" | "ANSWER_SUBMITTED" | "FEEDBACK_READY" | "QUESTION_COMPLETED" | "SUMMARY_GENERATING" | "STAGE_COMPLETED" | "SESSION_COMPLETED" | "RETRYABLE_FAILURE" | "FAILED")
 session_revision: number
 state_version: number
 /**
@@ -2747,13 +2747,23 @@ key_mastery_points: string[]
 major_weak_points: string[]
 next_stage_hint: string
 }
-failure?: {
-failure_id: string
-failure_class: ("RETRYABLE" | "PERMANENT")
-error_code: ("GENERATION_FAILED" | "TEMPORARY_UNAVAILABLE" | "INVALID_STATE" | "CONTRACT_REJECTED")
-message: string
-attempt: number
-}
+failure?: ({
+failed_operation?: "GENERATE_DIRECTIONS"
+resume_state?: "CREATED"
+[k: string]: unknown
+} | {
+failed_operation?: "GENERATE_QUESTIONS"
+resume_state?: ("ROUTE_LOCKED" | "QUESTIONS_GENERATING")
+[k: string]: unknown
+} | {
+failed_operation?: "GENERATE_FEEDBACK"
+resume_state?: "ANSWER_SUBMITTED"
+[k: string]: unknown
+} | {
+failed_operation?: "GENERATE_STAGE_SUMMARY"
+resume_state?: ("QUESTION_COMPLETED" | "SUMMARY_GENERATING")
+[k: string]: unknown
+})
 created_at: string
 updated_at: string
 } & ({
@@ -2764,7 +2774,7 @@ state: "CREATED"
 candidate_directions?: []
 [k: string]: unknown
 } | {
-state: ("DIRECTIONS_READY" | "AWAITING_DIRECTION_SELECTION")
+state: "AWAITING_DIRECTION_SELECTION"
 /**
  * @minItems 2
  * @maxItems 3
@@ -2773,15 +2783,27 @@ candidate_directions: [unknown, unknown]|[unknown, unknown, unknown]
 [k: string]: unknown
 } | {
 state: "ROUTE_LOCKED"
+current_stage_id: "UNDERSTAND"
 [k: string]: unknown
 } | {
-state: ("STAGE_IN_PROGRESS" | "AWAITING_ANSWER" | "ANSWER_SUBMITTED" | "FEEDBACK_READY" | "QUESTION_COMPLETED")
+state: "QUESTIONS_GENERATING"
+current_stage_id: "UNDERSTAND"
+[k: string]: unknown
+} | {
+state: ("AWAITING_ANSWER" | "ANSWER_SUBMITTED" | "FEEDBACK_READY" | "QUESTION_COMPLETED")
+current_stage_id: "UNDERSTAND"
+[k: string]: unknown
+} | {
+state: "SUMMARY_GENERATING"
+current_stage_id: "UNDERSTAND"
 [k: string]: unknown
 } | {
 state: "STAGE_COMPLETED"
+current_stage_id: "UNDERSTAND"
 [k: string]: unknown
 } | {
 state: "SESSION_COMPLETED"
+current_stage_id: "UNDERSTAND"
 [k: string]: unknown
 } | ({
 state?: "RETRYABLE_FAILURE"

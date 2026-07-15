@@ -246,14 +246,14 @@
         "state": {
           "enum": [
             "CREATED",
-            "DIRECTIONS_READY",
             "AWAITING_DIRECTION_SELECTION",
             "ROUTE_LOCKED",
-            "STAGE_IN_PROGRESS",
+            "QUESTIONS_GENERATING",
             "AWAITING_ANSWER",
             "ANSWER_SUBMITTED",
             "FEEDBACK_READY",
             "QUESTION_COMPLETED",
+            "SUMMARY_GENERATING",
             "STAGE_COMPLETED",
             "SESSION_COMPLETED",
             "RETRYABLE_FAILURE",
@@ -299,7 +299,9 @@
             { "$ref": "#/$defs/created_session" },
             { "$ref": "#/$defs/directions_session" },
             { "$ref": "#/$defs/route_locked_session" },
+            { "$ref": "#/$defs/questions_generating_session" },
             { "$ref": "#/$defs/active_session" },
+            { "$ref": "#/$defs/summary_generating_session" },
             { "$ref": "#/$defs/stage_completed_session" },
             { "$ref": "#/$defs/session_completed_session" },
             { "$ref": "#/$defs/failure_session" }
@@ -318,7 +320,11 @@
         "anyOf": [
           { "required": ["selected_direction_id"] },
           { "required": ["route"] },
-          { "required": ["questions"] }
+          { "required": ["questions"] },
+          { "required": ["current_stage_id"] },
+          { "required": ["current_question_order"] },
+          { "required": ["stage_summary"] },
+          { "required": ["failure"] }
         ]
       }
     },
@@ -326,9 +332,7 @@
       "type": "object",
       "required": ["state", "candidate_directions"],
       "properties": {
-        "state": {
-          "enum": ["DIRECTIONS_READY", "AWAITING_DIRECTION_SELECTION"]
-        },
+        "state": { "const": "AWAITING_DIRECTION_SELECTION" },
         "candidate_directions": {
           "type": "array",
           "minItems": 2,
@@ -339,19 +343,32 @@
         "anyOf": [
           { "required": ["selected_direction_id"] },
           { "required": ["route"] },
-          { "required": ["questions"] }
+          { "required": ["questions"] },
+          { "required": ["current_stage_id"] },
+          { "required": ["current_question_order"] },
+          { "required": ["stage_summary"] },
+          { "required": ["failure"] }
         ]
       }
     },
     "route_locked_session": {
       "type": "object",
-      "required": ["state", "selected_direction_id", "route"],
-      "properties": { "state": { "const": "ROUTE_LOCKED" } },
+      "required": [
+        "state",
+        "selected_direction_id",
+        "route",
+        "current_stage_id"
+      ],
+      "properties": {
+        "state": { "const": "ROUTE_LOCKED" },
+        "current_stage_id": { "const": "UNDERSTAND" }
+      },
       "not": {
         "anyOf": [
           { "required": ["current_question_order"] },
           { "required": ["questions"] },
-          { "required": ["stage_summary"] }
+          { "required": ["stage_summary"] },
+          { "required": ["failure"] }
         ]
       }
     },
@@ -368,13 +385,61 @@
       "properties": {
         "state": {
           "enum": [
-            "STAGE_IN_PROGRESS",
             "AWAITING_ANSWER",
             "ANSWER_SUBMITTED",
             "FEEDBACK_READY",
             "QUESTION_COMPLETED"
           ]
-        }
+        },
+        "current_stage_id": { "const": "UNDERSTAND" }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["stage_summary"] },
+          { "required": ["failure"] }
+        ]
+      }
+    },
+    "questions_generating_session": {
+      "type": "object",
+      "required": [
+        "state",
+        "selected_direction_id",
+        "route",
+        "current_stage_id"
+      ],
+      "properties": {
+        "state": { "const": "QUESTIONS_GENERATING" },
+        "current_stage_id": { "const": "UNDERSTAND" }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["current_question_order"] },
+          { "required": ["questions"] },
+          { "required": ["stage_summary"] },
+          { "required": ["failure"] }
+        ]
+      }
+    },
+    "summary_generating_session": {
+      "type": "object",
+      "required": [
+        "state",
+        "selected_direction_id",
+        "route",
+        "current_stage_id",
+        "questions"
+      ],
+      "properties": {
+        "state": { "const": "SUMMARY_GENERATING" },
+        "current_stage_id": { "const": "UNDERSTAND" }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["current_question_order"] },
+          { "required": ["stage_summary"] },
+          { "required": ["failure"] }
+        ]
       }
     },
     "stage_completed_session": {
@@ -387,21 +452,44 @@
         "questions",
         "stage_summary"
       ],
-      "properties": { "state": { "const": "STAGE_COMPLETED" } },
-      "not": { "required": ["current_question_order"] }
+      "properties": {
+        "state": { "const": "STAGE_COMPLETED" },
+        "current_stage_id": { "const": "UNDERSTAND" }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["current_question_order"] },
+          { "required": ["failure"] }
+        ]
+      }
     },
     "session_completed_session": {
       "type": "object",
-      "required": ["state", "selected_direction_id", "route", "stage_summary"],
-      "properties": { "state": { "const": "SESSION_COMPLETED" } },
-      "not": { "required": ["current_question_order"] }
+      "required": [
+        "state",
+        "selected_direction_id",
+        "route",
+        "current_stage_id",
+        "questions",
+        "stage_summary"
+      ],
+      "properties": {
+        "state": { "const": "SESSION_COMPLETED" },
+        "current_stage_id": { "const": "UNDERSTAND" }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["current_question_order"] },
+          { "required": ["failure"] }
+        ]
+      }
     },
     "failure_session": {
       "type": "object",
       "required": ["state", "failure"],
       "properties": {
         "state": { "enum": ["RETRYABLE_FAILURE", "FAILED"] },
-        "failure": { "type": "object" }
+        "failure": { "$ref": "#/$defs/failure" }
       },
       "oneOf": [
         {
@@ -760,17 +848,69 @@
     },
     "failure": {
       "type": "object",
-      "required": ["failure_id", "failure_class", "error_code", "message", "attempt"],
+      "required": [
+        "failure_id",
+        "failure_class",
+        "failed_operation",
+        "resume_state",
+        "error_code",
+        "message",
+        "attempt"
+      ],
       "properties": {
         "failure_id": { "type": "string", "pattern": "^failure_[A-Za-z0-9_-]+$" },
         "failure_class": { "enum": ["RETRYABLE", "PERMANENT"] },
+        "failed_operation": {
+          "enum": [
+            "GENERATE_DIRECTIONS",
+            "GENERATE_QUESTIONS",
+            "GENERATE_FEEDBACK",
+            "GENERATE_STAGE_SUMMARY"
+          ]
+        },
+        "resume_state": {
+          "enum": [
+            "CREATED",
+            "ROUTE_LOCKED",
+            "QUESTIONS_GENERATING",
+            "ANSWER_SUBMITTED",
+            "QUESTION_COMPLETED",
+            "SUMMARY_GENERATING"
+          ]
+        },
         "error_code": {
           "enum": ["GENERATION_FAILED", "TEMPORARY_UNAVAILABLE", "INVALID_STATE", "CONTRACT_REJECTED"]
         },
         "message": { "type": "string", "minLength": 1, "maxLength": 300 },
         "attempt": { "type": "integer", "minimum": 1, "maximum": 10 }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "failed_operation": { "const": "GENERATE_DIRECTIONS" },
+            "resume_state": { "const": "CREATED" }
+          }
+        },
+        {
+          "properties": {
+            "failed_operation": { "const": "GENERATE_QUESTIONS" },
+            "resume_state": { "enum": ["ROUTE_LOCKED", "QUESTIONS_GENERATING"] }
+          }
+        },
+        {
+          "properties": {
+            "failed_operation": { "const": "GENERATE_FEEDBACK" },
+            "resume_state": { "const": "ANSWER_SUBMITTED" }
+          }
+        },
+        {
+          "properties": {
+            "failed_operation": { "const": "GENERATE_STAGE_SUMMARY" },
+            "resume_state": { "enum": ["QUESTION_COMPLETED", "SUMMARY_GENERATING"] }
+          }
+        }
+      ]
     }
   }
 }

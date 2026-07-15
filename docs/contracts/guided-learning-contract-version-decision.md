@@ -61,3 +61,76 @@
 ## 服务端专属状态
 
 以下字段和推进只能由服务端产生或推进：`state`、`state_version`、`session_revision`、候选方向生成结果、`selected_direction_id` 的锁定结果、`route` 及其 `locked`/stage status、问题 status/confirmation status、feedback、reference_answer、Evidence 及其 `verification_status`、stage summary、failure 和 `SESSION_COMPLETED`。客户端只能提交定义过的命令 payload；不能通过额外字段或重放请求绕过这些约束。
+
+## T-W1-011 修复后的状态机
+
+V1 的可观察状态为：
+
+`CREATED` → `AWAITING_DIRECTION_SELECTION` → `ROUTE_LOCKED` →
+`QUESTIONS_GENERATING` → `AWAITING_ANSWER` → `ANSWER_SUBMITTED` →
+`FEEDBACK_READY` → `QUESTION_COMPLETED` → `SUMMARY_GENERATING` →
+`STAGE_COMPLETED` → `SESSION_COMPLETED`。
+
+`AWAITING_ANSWER` 可以由 `SKIP_QUESTION` 直接进入
+`QUESTION_COMPLETED`；`FEEDBACK_READY` 和 `QUESTION_COMPLETED` 可以通过
+`EDIT_ANSWER` 回到 `ANSWER_SUBMITTED`。`ADVANCE_QUESTION` 在有后续题时回到
+`AWAITING_ANSWER`，在最后一题后进入 `SUMMARY_GENERATING`。服务端的
+`QUESTIONS_READY`、`SUMMARY_READY` 和 `COMPLETE_SESSION` 分别推进生成和完成阶段。
+
+`RETRYABLE_FAILURE` 是带恢复上下文的非终态，`FAILED` 与
+`SESSION_COMPLETED` 是终态。状态机不再把 `DIRECTIONS_READY` 当作 Session
+状态；它只作为服务端事件，将 `CREATED` 推进到
+`AWAITING_DIRECTION_SELECTION`。同样，生成中状态不会要求尚未生成的
+questions 或 summary；生成完成后的稳定状态才要求相应结果。
+
+| 状态 | 必需的状态数据 |
+| --- | --- |
+| `CREATED` | 空的 `candidate_directions`，没有方向、路线或问题 |
+| `AWAITING_DIRECTION_SELECTION` | 2–3 个候选方向，没有锁定路线 |
+| `ROUTE_LOCKED` | `selected_direction_id`、规范路线、`current_stage_id=UNDERSTAND` |
+| `QUESTIONS_GENERATING` | 锁定方向和路线，不携带未生成的问题 |
+| `AWAITING_ANSWER` | questions、当前题指针，恰好一题 `ACTIVE` |
+| `ANSWER_SUBMITTED` | 当前题为 `ANSWERED` |
+| `FEEDBACK_READY` | 当前题的回答、点评、参考答案和 Evidence |
+| `QUESTION_COMPLETED` | 当前题为 `CONFIRMED` 或 `SKIPPED` |
+| `SUMMARY_GENERATING` | 全部 questions，尚未携带 summary |
+| `STAGE_COMPLETED` / `SESSION_COMPLETED` | 全部 questions 已解决且有一致的 `stage_summary` |
+| `RETRYABLE_FAILURE` / `FAILED` | failure 与其合法恢复上下文 |
+
+## 失败恢复和幂等
+
+`failure` 记录 `failed_operation` 和 `resume_state`。允许的对应关系为：
+
+- `GENERATE_DIRECTIONS` → `CREATED`；
+- `GENERATE_QUESTIONS` → `ROUTE_LOCKED` 或 `QUESTIONS_GENERATING`；
+- `GENERATE_FEEDBACK` → `ANSWER_SUBMITTED`；
+- `GENERATE_STAGE_SUMMARY` → `QUESTION_COMPLETED` 或 `SUMMARY_GENERATING`。
+
+服务端必须在产生失败时记录当前恢复状态；`RETRY` 只接受服务端 failure
+上下文并返回该上下文的 `resume_state`。客户端的空 retry payload 不能携带
+`resume_state`，`FAILED` 不能重试，操作和恢复状态不匹配时拒绝。
+
+`GuidedLearningIdempotencyRecord` 至少包含
+`idempotency_key`、`session_id`、`event`、`request_fingerprint`、
+`from_state`、`to_state`、`actor` 和 `result_revision`。fingerprint 覆盖
+`schema_version`、`session_id`、command/event 和规范化后的完整 payload；
+`command_id`、`request_id` 不是业务等价依据。同一 key 只有在 session、事件和
+fingerprint 全部相同时才返回原结果；任一不同都返回
+`IDEMPOTENCY_KEY_REUSED`。
+
+## Schema 与一致性验证边界
+
+`guided-learning.v1.schema.json` 负责消息形状、服务端/客户端字段边界、状态所需字段、
+失败映射和 canonical route 的结构约束。`validateGuidedLearningSessionConsistency`
+负责 Schema 难以表达的聚合约束：方向 ID 引用和唯一性、question ID/order 的连续性、
+当前题与 ACTIVE 状态、题目字段组合、summary 与题目状态的对应关系、完成条件、失败
+分类和恢复映射。稳定错误码由
+`GUIDED_LEARNING_CONSISTENCY_ERROR_CODES` 导出。API/Worker/Web 后续处理必须按顺序
+执行 Schema validation、consistency validation、state transition validation 和
+idempotency validation。
+
+## 版本类型
+
+`ContractVersion` 继续表示旧快速问答版本集合，以保持既有消费者的兼容语义。
+`SupportedContractVersion` 才表示当前所有支持的版本，并包含
+`guided-learning.v1`；两者的区别由 `SUPPORTED_CONTRACT_VERSIONS` 明确表达。
