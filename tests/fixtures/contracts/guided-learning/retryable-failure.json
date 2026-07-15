@@ -1,0 +1,64 @@
+{
+  "schema_version": "guided-learning.v1",
+  "message_kind": "SESSION",
+  "session": {
+    "session_id": "learning_fixture_retryable_failure",
+    "project_id": "proj_fixture_1",
+    "document_version_id": "docv_fixture_1",
+    "mode": "GUIDED_LEARNING",
+    "learning_goal": "理解论文的方法设计。",
+    "state": "RETRYABLE_FAILURE",
+    "session_revision": 5,
+    "state_version": 5,
+    "candidate_directions": [
+      {
+        "direction_id": "direction_method",
+        "title": "理解方法设计",
+        "description": "梳理论文方法的整体框架和关键模块。",
+        "selection_basis": "与用户想理解方法设计的目标最直接相关。"
+      }
+    ],
+    "selected_direction_id": "direction_method",
+    "route": {
+      "route_id": "route_fixture_failure",
+      "route_version": "guided-route.v1",
+      "locked": true,
+      "locked_at": "2026-07-15T00:02:00Z",
+      "stages": [
+        {
+          "stage_id": "UNDERSTAND",
+          "order": 1,
+          "title": "理解内容",
+          "status": "OPEN",
+          "unlock_condition": "SESSION_DIRECTION_SELECTED"
+        },
+        {
+          "stage_id": "ANALYZE",
+          "order": 2,
+          "title": "分析评价",
+          "status": "LOCKED",
+          "unlock_condition": "NOT_AVAILABLE_IN_V1"
+        },
+        {
+          "stage_id": "TRANSFER",
+          "order": 3,
+          "title": "迁移应用",
+          "status": "LOCKED",
+          "unlock_condition": "NOT_AVAILABLE_IN_V1"
+        }
+      ]
+    },
+    "current_stage_id": "UNDERSTAND",
+    "failure": {
+      "failure_id": "failure_fixture_retryable",
+      "failure_class": "RETRYABLE",
+      "failed_operation": "GENERATE_QUESTIONS",
+      "resume_state": "ROUTE_LOCKED",
+      "error_code": "TEMPORARY_UNAVAILABLE",
+      "message": "生成服务暂时不可用。",
+      "attempt": 1
+    },
+    "created_at": "2026-07-15T00:00:00Z",
+    "updated_at": "2026-07-15T00:03:00Z"
+  }
+}
