@@ -1,0 +1,15 @@
+{
+  "schema_version": "guided-learning.v1",
+  "message_kind": "COMMAND",
+  "command_id": "guided_cmd_invalid_1",
+  "request_id": "req_guided_invalid_1",
+  "idempotency_key": "idem_guided_invalid_1",
+  "session_id": "learning_fixture_1",
+  "command": "SUBMIT_ANSWER",
+  "state": "FEEDBACK_READY",
+  "payload": {
+    "question_id": "guided_question_2",
+    "question_order": 2,
+    "answer": "客户端不能直接写入服务端状态。"
+  }
+}

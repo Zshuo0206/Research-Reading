@@ -1,0 +1,776 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-reading.local/contracts/guided-learning.v1.json",
+  "title": "Wave 1 guided learning session and state machine",
+  "type": "object",
+  "required": ["schema_version", "message_kind"],
+  "properties": {
+    "schema_version": { "const": "guided-learning.v1" },
+    "message_kind": { "enum": ["SESSION", "COMMAND"] }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/session_message" },
+    { "$ref": "#/$defs/command_message" }
+  ],
+  "$defs": {
+    "session_message": {
+      "type": "object",
+      "required": ["schema_version", "message_kind", "session"],
+      "properties": {
+        "schema_version": { "const": "guided-learning.v1" },
+        "message_kind": { "const": "SESSION" },
+        "session": { "$ref": "#/$defs/session" }
+      },
+      "additionalProperties": false
+    },
+    "command_message": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+        "schema_version",
+        "message_kind",
+        "command_id",
+        "request_id",
+        "idempotency_key",
+        "session_id",
+        "command",
+        "payload"
+          ],
+          "properties": {
+        "schema_version": { "const": "guided-learning.v1" },
+        "message_kind": { "const": "COMMAND" },
+        "command_id": {
+          "type": "string",
+          "pattern": "^guided_cmd_[A-Za-z0-9_-]+$"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^req_[A-Za-z0-9_-]+$"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "pattern": "^idem_[A-Za-z0-9_-]+$",
+          "minLength": 6,
+          "maxLength": 200
+        },
+        "session_id": {
+          "type": "string",
+          "pattern": "^learning_[A-Za-z0-9_-]+$"
+        },
+        "command": {
+          "enum": [
+            "SELECT_DIRECTION",
+            "START_STAGE",
+            "SUBMIT_ANSWER",
+            "SKIP_QUESTION",
+            "CONFIRM_QUESTION",
+            "EDIT_ANSWER",
+            "ADVANCE_QUESTION",
+            "RETRY"
+          ]
+        },
+        "payload": { "type": "object" }
+      },
+          "additionalProperties": false
+        },
+        {
+          "oneOf": [
+            { "$ref": "#/$defs/select_direction_command" },
+            { "$ref": "#/$defs/start_stage_command" },
+            { "$ref": "#/$defs/submit_answer_command" },
+            { "$ref": "#/$defs/skip_question_command" },
+            { "$ref": "#/$defs/confirm_question_command" },
+            { "$ref": "#/$defs/edit_answer_command" },
+            { "$ref": "#/$defs/advance_question_command" },
+            { "$ref": "#/$defs/retry_command" }
+          ]
+        }
+      ]
+    },
+    "select_direction_command": {
+      "type": "object",
+      "required": ["command", "payload"],
+      "properties": {
+        "command": { "const": "SELECT_DIRECTION" },
+        "payload": { "$ref": "#/$defs/select_direction_payload" }
+      }
+    },
+    "start_stage_command": {
+      "type": "object",
+      "required": ["command", "payload"],
+      "properties": {
+        "command": { "const": "START_STAGE" },
+        "payload": { "$ref": "#/$defs/start_stage_payload" }
+      }
+    },
+    "submit_answer_command": {
+      "type": "object",
+      "required": ["command", "payload"],
+      "properties": {
+        "command": { "const": "SUBMIT_ANSWER" },
+        "payload": { "$ref": "#/$defs/answer_payload" }
+      }
+    },
+    "skip_question_command": {
+      "type": "object",
+      "required": ["command", "payload"],
+      "properties": {
+        "command": { "const": "SKIP_QUESTION" },
+        "payload": { "$ref": "#/$defs/skip_question_payload" }
+      }
+    },
+    "confirm_question_command": {
+      "type": "object",
+      "required": ["command", "payload"],
+      "properties": {
+        "command": { "const": "CONFIRM_QUESTION" },
+        "payload": { "$ref": "#/$defs/question_pointer_payload" }
+      }
+    },
+    "edit_answer_command": {
+      "type": "object",
+      "required": ["command", "payload"],
+      "properties": {
+        "command": { "const": "EDIT_ANSWER" },
+        "payload": { "$ref": "#/$defs/answer_payload" }
+      }
+    },
+    "advance_question_command": {
+      "type": "object",
+      "required": ["command", "payload"],
+      "properties": {
+        "command": { "const": "ADVANCE_QUESTION" },
+        "payload": { "$ref": "#/$defs/question_pointer_payload" }
+      }
+    },
+    "retry_command": {
+      "type": "object",
+      "required": ["command", "payload"],
+      "properties": {
+        "command": { "const": "RETRY" },
+        "payload": { "$ref": "#/$defs/retry_payload" }
+      }
+    },
+    "select_direction_payload": {
+      "type": "object",
+      "required": ["direction_id"],
+      "properties": {
+        "direction_id": {
+          "type": "string",
+          "pattern": "^direction_[A-Za-z0-9_-]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "start_stage_payload": {
+      "type": "object",
+      "required": ["stage_id"],
+      "properties": { "stage_id": { "const": "UNDERSTAND" } },
+      "additionalProperties": false
+    },
+    "question_pointer_payload": {
+      "type": "object",
+      "required": ["question_id", "question_order"],
+      "properties": {
+        "question_id": {
+          "type": "string",
+          "pattern": "^guided_question_[A-Za-z0-9_-]+$"
+        },
+        "question_order": { "type": "integer", "minimum": 1, "maximum": 7 }
+      },
+      "additionalProperties": false
+    },
+    "answer_payload": {
+      "type": "object",
+      "required": ["question_id", "question_order", "answer"],
+      "properties": {
+        "question_id": {
+          "type": "string",
+          "pattern": "^guided_question_[A-Za-z0-9_-]+$"
+        },
+        "question_order": { "type": "integer", "minimum": 1, "maximum": 7 },
+        "answer": { "type": "string", "minLength": 1, "maxLength": 5000 }
+      },
+      "additionalProperties": false
+    },
+    "skip_question_payload": {
+      "type": "object",
+      "required": ["question_id", "question_order", "reason"],
+      "properties": {
+        "question_id": {
+          "type": "string",
+          "pattern": "^guided_question_[A-Za-z0-9_-]+$"
+        },
+        "question_order": { "type": "integer", "minimum": 1, "maximum": 7 },
+        "reason": { "const": "I_DONT_KNOW" }
+      },
+      "additionalProperties": false
+    },
+    "retry_payload": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "session": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+        "session_id",
+        "project_id",
+        "document_version_id",
+        "mode",
+        "learning_goal",
+        "state",
+        "session_revision",
+        "state_version",
+        "candidate_directions",
+        "created_at",
+        "updated_at"
+          ],
+          "properties": {
+        "session_id": {
+          "type": "string",
+          "pattern": "^learning_[A-Za-z0-9_-]+$"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^proj_[A-Za-z0-9_-]+$"
+        },
+        "document_version_id": {
+          "type": "string",
+          "pattern": "^docv_[A-Za-z0-9_-]+$"
+        },
+        "mode": { "const": "GUIDED_LEARNING" },
+        "learning_goal": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "state": {
+          "enum": [
+            "CREATED",
+            "DIRECTIONS_READY",
+            "AWAITING_DIRECTION_SELECTION",
+            "ROUTE_LOCKED",
+            "STAGE_IN_PROGRESS",
+            "AWAITING_ANSWER",
+            "ANSWER_SUBMITTED",
+            "FEEDBACK_READY",
+            "QUESTION_COMPLETED",
+            "STAGE_COMPLETED",
+            "SESSION_COMPLETED",
+            "RETRYABLE_FAILURE",
+            "FAILED"
+          ]
+        },
+        "session_revision": { "type": "integer", "minimum": 1 },
+        "state_version": { "type": "integer", "minimum": 1 },
+        "candidate_directions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/candidate_direction" }
+        },
+        "selected_direction_id": {
+          "type": "string",
+          "pattern": "^direction_[A-Za-z0-9_-]+$"
+        },
+        "route": { "$ref": "#/$defs/learning_route" },
+        "current_stage_id": {
+          "enum": ["UNDERSTAND", "ANALYZE", "TRANSFER"]
+        },
+        "current_question_order": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "questions": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 7,
+          "items": { "$ref": "#/$defs/guided_question" }
+        },
+        "stage_summary": { "$ref": "#/$defs/stage_summary" },
+        "failure": { "$ref": "#/$defs/failure" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+          "additionalProperties": false
+        },
+        {
+          "oneOf": [
+            { "$ref": "#/$defs/created_session" },
+            { "$ref": "#/$defs/directions_session" },
+            { "$ref": "#/$defs/route_locked_session" },
+            { "$ref": "#/$defs/active_session" },
+            { "$ref": "#/$defs/stage_completed_session" },
+            { "$ref": "#/$defs/session_completed_session" },
+            { "$ref": "#/$defs/failure_session" }
+          ]
+        }
+      ]
+    },
+    "created_session": {
+      "type": "object",
+      "required": ["state"],
+      "properties": {
+        "state": { "const": "CREATED" },
+        "candidate_directions": { "type": "array", "maxItems": 0 }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["selected_direction_id"] },
+          { "required": ["route"] },
+          { "required": ["questions"] }
+        ]
+      }
+    },
+    "directions_session": {
+      "type": "object",
+      "required": ["state", "candidate_directions"],
+      "properties": {
+        "state": {
+          "enum": ["DIRECTIONS_READY", "AWAITING_DIRECTION_SELECTION"]
+        },
+        "candidate_directions": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3
+        }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["selected_direction_id"] },
+          { "required": ["route"] },
+          { "required": ["questions"] }
+        ]
+      }
+    },
+    "route_locked_session": {
+      "type": "object",
+      "required": ["state", "selected_direction_id", "route"],
+      "properties": { "state": { "const": "ROUTE_LOCKED" } },
+      "not": {
+        "anyOf": [
+          { "required": ["current_question_order"] },
+          { "required": ["questions"] },
+          { "required": ["stage_summary"] }
+        ]
+      }
+    },
+    "active_session": {
+      "type": "object",
+      "required": [
+        "state",
+        "selected_direction_id",
+        "route",
+        "current_stage_id",
+        "current_question_order",
+        "questions"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "STAGE_IN_PROGRESS",
+            "AWAITING_ANSWER",
+            "ANSWER_SUBMITTED",
+            "FEEDBACK_READY",
+            "QUESTION_COMPLETED"
+          ]
+        }
+      }
+    },
+    "stage_completed_session": {
+      "type": "object",
+      "required": [
+        "state",
+        "selected_direction_id",
+        "route",
+        "current_stage_id",
+        "questions",
+        "stage_summary"
+      ],
+      "properties": { "state": { "const": "STAGE_COMPLETED" } },
+      "not": { "required": ["current_question_order"] }
+    },
+    "session_completed_session": {
+      "type": "object",
+      "required": ["state", "selected_direction_id", "route", "stage_summary"],
+      "properties": { "state": { "const": "SESSION_COMPLETED" } },
+      "not": { "required": ["current_question_order"] }
+    },
+    "failure_session": {
+      "type": "object",
+      "required": ["state", "failure"],
+      "properties": {
+        "state": { "enum": ["RETRYABLE_FAILURE", "FAILED"] },
+        "failure": { "type": "object" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "state": { "const": "RETRYABLE_FAILURE" },
+            "failure": {
+              "type": "object",
+              "properties": { "failure_class": { "const": "RETRYABLE" } }
+            }
+          }
+        },
+        {
+          "properties": {
+            "state": { "const": "FAILED" },
+            "failure": {
+              "type": "object",
+              "properties": { "failure_class": { "const": "PERMANENT" } }
+            }
+          }
+        }
+      ]
+    },
+    "candidate_direction": {
+      "type": "object",
+      "required": ["direction_id", "title", "description", "selection_basis"],
+      "properties": {
+        "direction_id": {
+          "type": "string",
+          "pattern": "^direction_[A-Za-z0-9_-]+$"
+        },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "selection_basis": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      },
+      "additionalProperties": false
+    },
+    "learning_route": {
+      "type": "object",
+      "required": ["route_id", "route_version", "locked", "locked_at", "stages"],
+      "properties": {
+        "route_id": { "type": "string", "pattern": "^route_[A-Za-z0-9_-]+$" },
+        "route_version": { "const": "guided-route.v1" },
+        "locked": { "const": true },
+        "locked_at": { "type": "string", "format": "date-time" },
+        "stages": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "prefixItems": [
+            { "$ref": "#/$defs/understand_stage" },
+            { "$ref": "#/$defs/analyze_stage" },
+            { "$ref": "#/$defs/transfer_stage" }
+          ],
+          "items": { "$ref": "#/$defs/stage" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "stage": {
+      "type": "object",
+      "required": ["stage_id", "order", "title", "status", "unlock_condition"],
+      "properties": {
+        "stage_id": { "enum": ["UNDERSTAND", "ANALYZE", "TRANSFER"] },
+        "order": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "status": { "enum": ["LOCKED", "OPEN", "COMPLETED"] },
+        "unlock_condition": {
+          "enum": [
+            "SESSION_DIRECTION_SELECTED",
+            "PREVIOUS_STAGE_COMPLETED",
+            "NOT_AVAILABLE_IN_V1"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "understand_stage": {
+      "allOf": [
+        { "$ref": "#/$defs/stage" },
+        {
+          "type": "object",
+          "properties": {
+            "stage_id": { "const": "UNDERSTAND" },
+            "order": { "const": 1 },
+            "status": { "enum": ["OPEN", "COMPLETED"] },
+            "unlock_condition": { "const": "SESSION_DIRECTION_SELECTED" }
+          }
+        }
+      ]
+    },
+    "analyze_stage": {
+      "allOf": [
+        { "$ref": "#/$defs/stage" },
+        {
+          "type": "object",
+          "properties": {
+            "stage_id": { "const": "ANALYZE" },
+            "order": { "const": 2 },
+            "status": { "const": "LOCKED" },
+            "unlock_condition": { "const": "NOT_AVAILABLE_IN_V1" }
+          }
+        }
+      ]
+    },
+    "transfer_stage": {
+      "allOf": [
+        { "$ref": "#/$defs/stage" },
+        {
+          "type": "object",
+          "properties": {
+            "stage_id": { "const": "TRANSFER" },
+            "order": { "const": 3 },
+            "status": { "const": "LOCKED" },
+            "unlock_condition": { "const": "NOT_AVAILABLE_IN_V1" }
+          }
+        }
+      ]
+    },
+    "guided_question": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+        "question_id",
+        "order",
+        "stage_id",
+        "prompt",
+        "status",
+        "confirmation_status"
+          ],
+          "properties": {
+        "question_id": {
+          "type": "string",
+          "pattern": "^guided_question_[A-Za-z0-9_-]+$"
+        },
+        "order": { "type": "integer", "minimum": 1, "maximum": 7 },
+        "stage_id": { "const": "UNDERSTAND" },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "status": {
+          "enum": [
+            "UNSEEN",
+            "ACTIVE",
+            "ANSWERED",
+            "SKIPPED",
+            "FEEDBACK_READY",
+            "CONFIRMED"
+          ]
+        },
+        "confirmation_status": {
+          "enum": ["PENDING", "CONFIRMED", "SKIPPED"]
+        },
+        "user_answer": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "skip_reason": { "const": "I_DONT_KNOW" },
+        "feedback": { "$ref": "#/$defs/feedback" },
+        "reference_answer": { "$ref": "#/$defs/reference_answer" },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "https://research-reading.local/contracts/evidence.v1.json#/$defs/evidence_span"
+          }
+        }
+      },
+          "additionalProperties": false
+        },
+        {
+          "oneOf": [
+            { "$ref": "#/$defs/unanswered_question" },
+            { "$ref": "#/$defs/answered_question" },
+            { "$ref": "#/$defs/skipped_question" },
+            { "$ref": "#/$defs/feedback_question" },
+            { "$ref": "#/$defs/confirmed_question" }
+          ]
+        }
+      ]
+    },
+    "unanswered_question": {
+      "type": "object",
+      "required": ["status", "confirmation_status"],
+      "properties": {
+        "status": { "enum": ["UNSEEN", "ACTIVE"] },
+        "confirmation_status": { "const": "PENDING" }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["user_answer"] },
+          { "required": ["skip_reason"] },
+          { "required": ["feedback"] },
+          { "required": ["reference_answer"] },
+          { "required": ["evidence"] }
+        ]
+      }
+    },
+    "answered_question": {
+      "type": "object",
+      "required": ["status", "confirmation_status", "user_answer"],
+      "properties": {
+        "status": { "const": "ANSWERED" },
+        "confirmation_status": { "const": "PENDING" }
+      },
+      "not": { "required": ["skip_reason"] }
+    },
+    "skipped_question": {
+      "type": "object",
+      "required": ["status", "confirmation_status", "skip_reason"],
+      "properties": {
+        "status": { "const": "SKIPPED" },
+        "confirmation_status": { "const": "SKIPPED" },
+        "skip_reason": { "const": "I_DONT_KNOW" }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["user_answer"] },
+          { "required": ["feedback"] },
+          { "required": ["reference_answer"] },
+          { "required": ["evidence"] }
+        ]
+      }
+    },
+    "feedback_question": {
+      "type": "object",
+      "required": [
+        "status",
+        "confirmation_status",
+        "user_answer",
+        "feedback",
+        "reference_answer",
+        "evidence"
+      ],
+      "properties": {
+        "status": { "const": "FEEDBACK_READY" },
+        "confirmation_status": { "const": "PENDING" }
+      },
+      "not": { "required": ["skip_reason"] }
+    },
+    "confirmed_question": {
+      "type": "object",
+      "required": [
+        "status",
+        "confirmation_status",
+        "user_answer",
+        "feedback",
+        "reference_answer",
+        "evidence"
+      ],
+      "properties": {
+        "status": { "const": "CONFIRMED" },
+        "confirmation_status": { "const": "CONFIRMED" }
+      },
+      "not": { "required": ["skip_reason"] }
+    },
+    "feedback": {
+      "type": "object",
+      "required": ["summary", "omissions"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "omissions": {
+          "type": "array",
+          "maxItems": 10,
+          "items": { "type": "string", "minLength": 1, "maxLength": 300 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "reference_answer": {
+      "type": "object",
+      "required": ["text", "claims"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "claims": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/guided_claim" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "guided_claim": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": ["text", "claim_type", "evidence_refs"],
+          "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "claim_type": {
+          "enum": ["PAPER_FACT", "AUTHOR_CLAIM", "AGENT_INFERENCE", "INSUFFICIENT_EVIDENCE"]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^evidence_[A-Za-z0-9_-]+$" }
+        }
+          },
+          "additionalProperties": false
+        },
+        {
+          "oneOf": [
+            { "$ref": "#/$defs/insufficient_guided_claim" },
+            { "$ref": "#/$defs/supported_guided_claim" }
+          ]
+        }
+      ]
+    },
+    "insufficient_guided_claim": {
+      "type": "object",
+      "required": ["claim_type", "evidence_refs"],
+      "properties": {
+        "claim_type": { "const": "INSUFFICIENT_EVIDENCE" },
+        "evidence_refs": { "type": "array", "maxItems": 0 }
+      }
+    },
+    "supported_guided_claim": {
+      "type": "object",
+      "required": ["claim_type", "evidence_refs"],
+      "properties": {
+        "claim_type": {
+          "enum": ["PAPER_FACT", "AUTHOR_CLAIM", "AGENT_INFERENCE"]
+        },
+        "evidence_refs": { "type": "array", "minItems": 1 }
+      }
+    },
+    "stage_summary": {
+      "type": "object",
+      "required": [
+        "stage_id",
+        "status",
+        "completed_question_orders",
+        "skipped_question_orders",
+        "key_mastery_points",
+        "major_weak_points",
+        "next_stage_hint"
+      ],
+      "properties": {
+        "stage_id": { "const": "UNDERSTAND" },
+        "status": { "const": "GENERATED" },
+        "completed_question_orders": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 1, "maximum": 7 }
+        },
+        "skipped_question_orders": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 1, "maximum": 7 }
+        },
+        "key_mastery_points": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+        },
+        "major_weak_points": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+        },
+        "next_stage_hint": { "type": "string", "minLength": 1, "maxLength": 500 }
+      },
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "required": ["failure_id", "failure_class", "error_code", "message", "attempt"],
+      "properties": {
+        "failure_id": { "type": "string", "pattern": "^failure_[A-Za-z0-9_-]+$" },
+        "failure_class": { "enum": ["RETRYABLE", "PERMANENT"] },
+        "error_code": {
+          "enum": ["GENERATION_FAILED", "TEMPORARY_UNAVAILABLE", "INVALID_STATE", "CONTRACT_REJECTED"]
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "attempt": { "type": "integer", "minimum": 1, "maximum": 10 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

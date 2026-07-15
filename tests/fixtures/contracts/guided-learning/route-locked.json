@@ -1,0 +1,60 @@
+{
+  "schema_version": "guided-learning.v1",
+  "message_kind": "SESSION",
+  "session": {
+    "session_id": "learning_fixture_1",
+    "project_id": "proj_fixture_1",
+    "document_version_id": "docv_fixture_1",
+    "mode": "GUIDED_LEARNING",
+    "learning_goal": "理解论文的方法设计和关键证据。",
+    "state": "ROUTE_LOCKED",
+    "session_revision": 4,
+    "state_version": 4,
+    "candidate_directions": [
+      {
+        "direction_id": "direction_method",
+        "title": "理解方法设计",
+        "description": "梳理论文方法的整体框架和关键模块。",
+        "selection_basis": "与用户想理解方法设计的目标最直接相关。"
+      },
+      {
+        "direction_id": "direction_evidence",
+        "title": "理解证据链",
+        "description": "理解实验如何支持论文的主要结论。",
+        "selection_basis": "帮助用户把方法主张和论文证据对应起来。"
+      }
+    ],
+    "selected_direction_id": "direction_method",
+    "route": {
+      "route_id": "route_fixture_1",
+      "route_version": "guided-route.v1",
+      "locked": true,
+      "locked_at": "2026-07-15T00:02:00Z",
+      "stages": [
+        {
+          "stage_id": "UNDERSTAND",
+          "order": 1,
+          "title": "理解内容",
+          "status": "OPEN",
+          "unlock_condition": "SESSION_DIRECTION_SELECTED"
+        },
+        {
+          "stage_id": "ANALYZE",
+          "order": 2,
+          "title": "分析评价",
+          "status": "LOCKED",
+          "unlock_condition": "NOT_AVAILABLE_IN_V1"
+        },
+        {
+          "stage_id": "TRANSFER",
+          "order": 3,
+          "title": "迁移应用",
+          "status": "LOCKED",
+          "unlock_condition": "NOT_AVAILABLE_IN_V1"
+        }
+      ]
+    },
+    "created_at": "2026-07-15T00:00:00Z",
+    "updated_at": "2026-07-15T00:02:00Z"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": "guided-learning.v1",
+  "message_kind": "COMMAND",
+  "command_id": "guided_cmd_submit_1_replay",
+  "request_id": "req_guided_submit_1_replay",
+  "idempotency_key": "idem_guided_submit_1",
+  "session_id": "learning_fixture_1",
+  "command": "SUBMIT_ANSWER",
+  "payload": {
+    "question_id": "guided_question_2",
+    "question_order": 2,
+    "answer": "关键模块先规范化文本，再把回答绑定到论文证据。"
+  }
+}

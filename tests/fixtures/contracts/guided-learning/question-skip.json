@@ -1,0 +1,76 @@
+{
+  "schema_version": "guided-learning.v1",
+  "message_kind": "SESSION",
+  "session": {
+    "session_id": "learning_fixture_skip",
+    "project_id": "proj_fixture_1",
+    "document_version_id": "docv_fixture_1",
+    "mode": "GUIDED_LEARNING",
+    "learning_goal": "理解论文的方法设计。",
+    "state": "QUESTION_COMPLETED",
+    "session_revision": 7,
+    "state_version": 7,
+    "candidate_directions": [],
+    "selected_direction_id": "direction_method",
+    "route": {
+      "route_id": "route_fixture_skip",
+      "route_version": "guided-route.v1",
+      "locked": true,
+      "locked_at": "2026-07-15T00:02:00Z",
+      "stages": [
+        {
+          "stage_id": "UNDERSTAND",
+          "order": 1,
+          "title": "理解内容",
+          "status": "OPEN",
+          "unlock_condition": "SESSION_DIRECTION_SELECTED"
+        },
+        {
+          "stage_id": "ANALYZE",
+          "order": 2,
+          "title": "分析评价",
+          "status": "LOCKED",
+          "unlock_condition": "NOT_AVAILABLE_IN_V1"
+        },
+        {
+          "stage_id": "TRANSFER",
+          "order": 3,
+          "title": "迁移应用",
+          "status": "LOCKED",
+          "unlock_condition": "NOT_AVAILABLE_IN_V1"
+        }
+      ]
+    },
+    "current_stage_id": "UNDERSTAND",
+    "current_question_order": 2,
+    "questions": [
+      {
+        "question_id": "guided_question_1",
+        "order": 1,
+        "stage_id": "UNDERSTAND",
+        "prompt": "论文方法解决了什么问题？",
+        "status": "SKIPPED",
+        "confirmation_status": "SKIPPED",
+        "skip_reason": "I_DONT_KNOW"
+      },
+      {
+        "question_id": "guided_question_2",
+        "order": 2,
+        "stage_id": "UNDERSTAND",
+        "prompt": "关键模块如何协作？",
+        "status": "ACTIVE",
+        "confirmation_status": "PENDING"
+      },
+      {
+        "question_id": "guided_question_3",
+        "order": 3,
+        "stage_id": "UNDERSTAND",
+        "prompt": "实验结果支持了什么结论？",
+        "status": "UNSEEN",
+        "confirmation_status": "PENDING"
+      }
+    ],
+    "created_at": "2026-07-15T00:00:00Z",
+    "updated_at": "2026-07-15T00:05:00Z"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "schema_version": "guided-learning.v1",
+  "message_kind": "SESSION",
+  "session": {
+    "session_id": "learning_fixture_invalid",
+    "project_id": "proj_fixture_1",
+    "document_version_id": "docv_fixture_1",
+    "mode": "GUIDED_LEARNING",
+    "learning_goal": "绕过方向选择。",
+    "state": "ROUTE_LOCKED",
+    "session_revision": 3,
+    "state_version": 3,
+    "candidate_directions": [],
+    "route": {
+      "route_id": "route_fixture_invalid",
+      "route_version": "guided-route.v1",
+      "locked": false,
+      "locked_at": "2026-07-15T00:02:00Z",
+      "stages": [
+        {
+          "stage_id": "ANALYZE",
+          "order": 2,
+          "title": "分析评价",
+          "status": "OPEN",
+          "unlock_condition": "SESSION_DIRECTION_SELECTED"
+        },
+        {
+          "stage_id": "UNDERSTAND",
+          "order": 1,
+          "title": "理解内容",
+          "status": "OPEN",
+          "unlock_condition": "SESSION_DIRECTION_SELECTED"
+        },
+        {
+          "stage_id": "TRANSFER",
+          "order": 3,
+          "title": "迁移应用",
+          "status": "LOCKED",
+          "unlock_condition": "NOT_AVAILABLE_IN_V1"
+        }
+      ]
+    },
+    "created_at": "2026-07-15T00:00:00Z",
+    "updated_at": "2026-07-15T00:02:00Z"
+  }
+}

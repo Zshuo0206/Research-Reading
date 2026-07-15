@@ -2,8 +2,33 @@ import type { Wave1AnswerAndRevisions } from "../generated/answer.v1.d.ts";
 import type { Wave1APIEnvelope } from "../generated/api.v1.d.ts";
 import type { Wave1ContextAndEvidenceSpans } from "../generated/evidence.v1.d.ts";
 import type { Wave1Job } from "../generated/job.v1.d.ts";
+import type { Wave1GuidedLearningSessionAndStateMachine } from "../generated/guided-learning.v1.d.ts";
 import type { Wave1ModelGatewayRequestResponseContract } from "../generated/model-gateway.v1.d.ts";
 import type { Wave1QuestionPlanAndRevisions } from "../generated/question-plan.v1.d.ts";
+
+export {
+  GUIDED_LEARNING_CLIENT_COMMANDS,
+  GUIDED_LEARNING_CONTRACT_VERSION,
+  GUIDED_LEARNING_STATES,
+  GUIDED_LEARNING_TRANSITIONS,
+  applyGuidedLearningEvent,
+  isCanonicalGuidedLearningRoute,
+} from "./guided-learning.js";
+export type {
+  GuidedLearningCommand,
+  GuidedLearningCommandName,
+  GuidedLearningContract,
+  GuidedLearningEvent,
+  GuidedLearningIdempotencyRecord,
+  GuidedLearningQuestion,
+  GuidedLearningRoute,
+  GuidedLearningServerEvent,
+  GuidedLearningSession,
+  GuidedLearningState,
+  GuidedLearningTransition,
+  GuidedLearningTransitionActor,
+  GuidedLearningTransitionResult,
+} from "./guided-learning.js";
 
 export const CONTRACT_VERSIONS = [
   "api.v1",
@@ -15,12 +40,18 @@ export const CONTRACT_VERSIONS = [
   "model-gateway.v1",
 ] as const;
 
+export const SUPPORTED_CONTRACT_VERSIONS = [
+  ...CONTRACT_VERSIONS,
+  "guided-learning.v1",
+] as const;
+
 export type ContractVersion = (typeof CONTRACT_VERSIONS)[number];
 export type ApiEnvelope = Wave1APIEnvelope;
 export type QuestionPlan = Wave1QuestionPlanAndRevisions;
 export type Answer = Wave1AnswerAndRevisions;
 export type Job = Wave1Job;
 export type ModelGatewayEnvelope = Wave1ModelGatewayRequestResponseContract;
+export type GuidedLearningEnvelope = Wave1GuidedLearningSessionAndStateMachine;
 export type ModelGatewayRequest = Extract<
   ModelGatewayEnvelope,
   { message_kind: "REQUEST" }

@@ -1,0 +1,86 @@
+{
+  "schema_version": "guided-learning.v1",
+  "message_kind": "SESSION",
+  "session": {
+    "session_id": "learning_fixture_complete",
+    "project_id": "proj_fixture_1",
+    "document_version_id": "docv_fixture_1",
+    "mode": "GUIDED_LEARNING",
+    "learning_goal": "理解论文的方法设计。",
+    "state": "SESSION_COMPLETED",
+    "session_revision": 15,
+    "state_version": 15,
+    "candidate_directions": [],
+    "selected_direction_id": "direction_method",
+    "route": {
+      "route_id": "route_fixture_complete",
+      "route_version": "guided-route.v1",
+      "locked": true,
+      "locked_at": "2026-07-15T00:02:00Z",
+      "stages": [
+        {
+          "stage_id": "UNDERSTAND",
+          "order": 1,
+          "title": "理解内容",
+          "status": "COMPLETED",
+          "unlock_condition": "SESSION_DIRECTION_SELECTED"
+        },
+        {
+          "stage_id": "ANALYZE",
+          "order": 2,
+          "title": "分析评价",
+          "status": "LOCKED",
+          "unlock_condition": "NOT_AVAILABLE_IN_V1"
+        },
+        {
+          "stage_id": "TRANSFER",
+          "order": 3,
+          "title": "迁移应用",
+          "status": "LOCKED",
+          "unlock_condition": "NOT_AVAILABLE_IN_V1"
+        }
+      ]
+    },
+    "current_stage_id": "UNDERSTAND",
+    "questions": [
+      {
+        "question_id": "guided_question_1",
+        "order": 1,
+        "stage_id": "UNDERSTAND",
+        "prompt": "论文方法解决了什么问题？",
+        "status": "SKIPPED",
+        "confirmation_status": "SKIPPED",
+        "skip_reason": "I_DONT_KNOW"
+      },
+      {
+        "question_id": "guided_question_2",
+        "order": 2,
+        "stage_id": "UNDERSTAND",
+        "prompt": "关键模块如何协作？",
+        "status": "SKIPPED",
+        "confirmation_status": "SKIPPED",
+        "skip_reason": "I_DONT_KNOW"
+      },
+      {
+        "question_id": "guided_question_3",
+        "order": 3,
+        "stage_id": "UNDERSTAND",
+        "prompt": "实验结果支持了什么结论？",
+        "status": "SKIPPED",
+        "confirmation_status": "SKIPPED",
+        "skip_reason": "I_DONT_KNOW"
+      }
+    ],
+    "stage_summary": {
+      "stage_id": "UNDERSTAND",
+      "status": "GENERATED",
+      "completed_question_orders": [],
+      "skipped_question_orders": [1, 2, 3],
+      "key_mastery_points": ["认识了论文方法的研究目标。"],
+      "major_weak_points": ["还需要回看关键模块的协作关系。"],
+      "next_stage_hint": "后续阶段将在未来版本开放。"
+    },
+    "created_at": "2026-07-15T00:00:00Z",
+    "updated_at": "2026-07-15T00:11:00Z"
+  }
+}
