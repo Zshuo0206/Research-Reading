@@ -1,0 +1,67 @@
+task_id: T-W1-011
+title: "细化引导式学习公共契约与状态机"
+owner_role: contract-agent
+status: DRAFT
+wave: 1
+
+objective: "在 RFC-W1-002 获得技术审查结论后，为 V1.0 引导式学习提供版本化、可测试且兼容快速问答的契约。"
+background: "V1.0 引入学习目标、候选方向、路线/阶段、逐题状态、点评、参考答案和阶段总结；这些字段不能由工作流或 Web owner 私自发明。"
+scope:
+  - "评估 wave1.v1 兼容扩展与 guided-learning.v1 新版本，给出选择依据。"
+  - "定义学习会话、候选方向、固定路线、逐题结果、跳过、点评、阶段总结和模式分支 Schema。"
+  - "定义快速问答与引导式学习的状态转换、幂等和错误负例。"
+  - "补充 deterministic Mock fixtures、TypeScript 类型和契约测试。"
+out_of_scope:
+  - "不实现 API、Worker、Web、真实模型调用或数据库迁移。"
+  - "不开放分析评价/迁移应用阶段，不实现动态难度、追问、评分或学习历史。"
+dependencies:
+  - task_id: T-W1-001
+    reason: "需要现有 wave1.v1 基线和契约生成工具。"
+  - task_id: T-W1-010
+    reason: "产品需求与 RFC-W1-002 必须先进入待审基线。"
+
+writable_paths:
+  - packages/contracts/wave1/**
+  - tests/contracts/**
+  - tests/fixtures/contracts/**
+  - docs/contracts/**
+read_only_paths:
+  - apps/**
+  - packages/model-gateway/**
+  - docs/product/**
+  - docs/rfcs/**
+forbidden_paths:
+  - apps/api/src/**
+  - apps/web/src/**
+  - package.json
+contract_version: "wave1.v1 或 guided-learning.v1（由 RFC 审查决定）"
+
+inputs:
+  - name: "已审查的 V1.0 产品需求和 RFC-W1-002"
+    type: "governed-contract-change-request"
+    source: "docs/product/v1.0-development-requirements.md"
+outputs:
+  - name: "版本化 Schema、生成类型、fixture 和契约测试"
+    type: "public-contract-baseline"
+    destination: "packages/contracts/wave1、tests/contracts、tests/fixtures/contracts"
+
+acceptance_criteria:
+  - "快速问答既有字段和读取兼容性得到测试保护。"
+  - "引导式学习字段覆盖目标、候选方向、方向选择、路线/阶段、问题顺序、跳过、点评、参考答案、Evidence 和总结。"
+  - "客户端不能通过契约字段绕过阶段锁定、证据验证或确认状态。"
+  - "Schema 生成、正例/负例、类型检查和契约漂移检查通过。"
+required_tests:
+  - "Schema/类型生成和 drift 检查。"
+  - "快速问答与引导式学习状态机正例/负例。"
+  - "Evidence 引用、阶段锁定、重复写请求和错误模型测试。"
+manual_acceptance:
+  - "QA 复核契约字段与 V1.0 最低验收场景一致。"
+security_considerations:
+  - "Schema 不承载 API Key、内部文件路径、完整审计日志或不必要的全文。"
+risks:
+  - risk: "公共契约扩展导致现有快速问答客户端或生成类型漂移。"
+    mitigation: "先选择版本策略并保留兼容 fixture，破坏性变化必须独立 RFC。"
+rollback_plan: "保留现有 wave1.v1，撤回未集成的引导式学习契约版本和 fixture。"
+deliverables:
+  - "契约演进决策记录。"
+  - "引导式学习 Schema、类型、fixture 和测试。"

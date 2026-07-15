@@ -225,6 +225,12 @@ Wave 1 公共契约基线为 `wave1.v1`，细分契约必须带版本字段：`a
 
 Job 状态和正式迁移表见第 6.3 节；契约固定为 `QUEUED`、`RUNNING`、`SUCCEEDED`、`FAILED`、`CANCEL_REQUESTED`、`CANCELLED`，重试通过 `attempt`、`failure_class` 和 `next_run_at` 表达，不新增含义模糊的 `RETRYING` 状态。
 
+### 10.4 V1.0 引导式学习技术细化（待 RFC-W1-002 审查）
+
+V1.0 产品定义已归档，开发基线见 `docs/product/v1.0-development-requirements.md`。现有第一轮基础能力继续复用；后续业务轮次需要在不破坏快速问答兼容性的前提下增加：学习目标、2–3 个候选方向、固定三阶段路线、第一阶段 3–7 道顺序问题、作答/跳过、点评、参考答案、Evidence、当前回答修正和阶段总结。
+
+该细化会影响公共契约、工作流状态机、持久化字段和 Web 页面。RFC-W1-002 在技术审查前只记录候选方案，不改变 `wave1.v1`，不解锁 Gate C。引导式学习的 `ANALYZE` 与 `TRANSFER` 阶段必须保持服务端锁定态；快速问答继续使用问题/回答确认与正式资产边界。
+
 ## 11. QA owner、评测集和指标
 
 ### 11.1 QA 执行方式和责任
