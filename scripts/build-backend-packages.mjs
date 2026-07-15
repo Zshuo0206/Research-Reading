@@ -12,6 +12,30 @@ const run = (project) => {
   });
 };
 
+const buildPdfPackage = () => {
+  execFileSync(
+    process.execPath,
+    [
+      tsc,
+      "--target",
+      "ES2023",
+      "--module",
+      "NodeNext",
+      "--moduleResolution",
+      "NodeNext",
+      "--strict",
+      "--skipLibCheck",
+      "--declaration",
+      "--outDir",
+      resolve(root, "packages/pdf/dist"),
+      "--rootDir",
+      resolve(root, "packages/pdf/src"),
+      resolve(root, "packages/pdf/src/index.ts"),
+    ],
+    { cwd: root, stdio: "inherit" },
+  );
+};
+
 run("packages/contracts/tsconfig.json");
 cpSync(
   resolve(root, "packages/contracts/wave1/generated"),
@@ -21,3 +45,4 @@ cpSync(
 run("packages/storage/tsconfig.json");
 run("packages/runtime-secrets/tsconfig.json");
 run("packages/model-gateway/tsconfig.json");
+buildPdfPackage();

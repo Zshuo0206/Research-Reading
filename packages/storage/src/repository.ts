@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type {
   CreateJobInput,
+  DocumentPageRecord,
   JobRecord,
   JobState,
   ReviewStatus,
@@ -69,6 +70,59 @@ export class StorageRepository {
     return this.database
       .prepare("SELECT * FROM document_versions WHERE document_version_id = ?")
       .get(documentVersionId) as SqlRow | undefined;
+  }
+
+  saveDocumentPages(
+    documentVersionId: string,
+    pages: readonly Omit<DocumentPageRecord, "documentVersionId">[],
+  ): void {
+    this.transaction(() => {
+      const insert = this.database.prepare(
+        "INSERT OR IGNORE INTO document_pages(document_version_id, page_number, canonical_page_text, page_text_sha256, extraction_profile_version, code_point_length) VALUES (?, ?, ?, ?, ?, ?)",
+      );
+      for (const page of pages) {
+        insert.run(
+          documentVersionId,
+          page.pageNumber,
+          page.canonicalPageText,
+          page.pageTextSha256,
+          page.extractionProfileVersion,
+          page.codePointLength,
+        );
+        const persisted = this.database
+          .prepare(
+            "SELECT * FROM document_pages WHERE document_version_id = ? AND page_number = ?",
+          )
+          .get(documentVersionId, page.pageNumber) as SqlRow;
+        if (
+          String(persisted.canonical_page_text) !== page.canonicalPageText ||
+          String(persisted.page_text_sha256) !== page.pageTextSha256 ||
+          String(persisted.extraction_profile_version) !==
+            page.extractionProfileVersion ||
+          Number(persisted.code_point_length) !== page.codePointLength
+        )
+          throw new Error(
+            `Document page ${documentVersionId}/${page.pageNumber} is immutable`,
+          );
+      }
+    });
+  }
+
+  getDocumentPages(documentVersionId: string): DocumentPageRecord[] {
+    return (
+      this.database
+        .prepare(
+          "SELECT * FROM document_pages WHERE document_version_id = ? ORDER BY page_number",
+        )
+        .all(documentVersionId) as SqlRow[]
+    ).map((row) => ({
+      documentVersionId: String(row.document_version_id),
+      pageNumber: Number(row.page_number),
+      canonicalPageText: String(row.canonical_page_text),
+      pageTextSha256: String(row.page_text_sha256),
+      extractionProfileVersion: String(row.extraction_profile_version),
+      codePointLength: Number(row.code_point_length),
+    }));
   }
 
   createQuestion(input: {

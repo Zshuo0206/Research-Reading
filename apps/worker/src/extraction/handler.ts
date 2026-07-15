@@ -13,11 +13,32 @@ export async function handleExtractionJob<T>(
   job: ExtractionJob,
   extract: (bytes: Uint8Array) => T | Promise<T>,
 ): Promise<ExtractionJobResult<T>> {
-  if (job.kind !== "DOCUMENT_EXTRACTION" || job.source_bytes.byteLength === 0) return { job_id: job.job_id, status: "FAILED", error_code: "UNSUPPORTED_INPUT", retryable: false };
+  if (job.kind !== "DOCUMENT_EXTRACTION" || job.source_bytes.byteLength === 0)
+    return {
+      job_id: job.job_id,
+      status: "FAILED",
+      error_code: "UNSUPPORTED_INPUT",
+      retryable: false,
+    };
   try {
-    return { job_id: job.job_id, status: "SUCCEEDED", output: await extract(job.source_bytes) };
+    return {
+      job_id: job.job_id,
+      status: "SUCCEEDED",
+      output: await extract(job.source_bytes),
+    };
   } catch (error) {
-    const code = typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : "INVALID_PDF";
-    return { job_id: job.job_id, status: "FAILED", error_code: code, retryable: false };
+    const code =
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      typeof error.code === "string"
+        ? error.code
+        : "INVALID_PDF";
+    return {
+      job_id: job.job_id,
+      status: "FAILED",
+      error_code: code,
+      retryable: false,
+    };
   }
 }

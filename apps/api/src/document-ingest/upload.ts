@@ -9,19 +9,39 @@ export interface UploadInput {
 }
 
 export class UploadValidationError extends Error {
-  constructor(public readonly code: "UNSUPPORTED_INPUT" | "PDF_LIMIT_EXCEEDED", message: string) {
+  constructor(
+    public readonly code: "UNSUPPORTED_INPUT" | "PDF_LIMIT_EXCEEDED",
+    message: string,
+  ) {
     super(message);
   }
 }
 
-export function validatePdfUpload(input: UploadInput, maxBytes = 50 * 1024 * 1024): void {
-  if (input.contentType.toLowerCase() !== "application/pdf" || !input.filename.toLowerCase().endsWith(".pdf") || Buffer.from(input.bytes.subarray(0, 5)).toString("ascii") !== "%PDF-") {
-    throw new UploadValidationError("UNSUPPORTED_INPUT", "multipart part must be an application/pdf PDF file");
+export function validatePdfUpload(
+  input: UploadInput,
+  maxBytes = 50 * 1024 * 1024,
+): void {
+  if (
+    input.contentType.toLowerCase() !== "application/pdf" ||
+    !input.filename.toLowerCase().endsWith(".pdf") ||
+    Buffer.from(input.bytes.subarray(0, 5)).toString("ascii") !== "%PDF-"
+  ) {
+    throw new UploadValidationError(
+      "UNSUPPORTED_INPUT",
+      "multipart part must be an application/pdf PDF file",
+    );
   }
-  if (input.bytes.byteLength === 0 || input.bytes.byteLength > maxBytes) throw new UploadValidationError("PDF_LIMIT_EXCEEDED", "PDF upload exceeds size boundary");
+  if (input.bytes.byteLength === 0 || input.bytes.byteLength > maxBytes)
+    throw new UploadValidationError(
+      "PDF_LIMIT_EXCEEDED",
+      "PDF upload exceeds size boundary",
+    );
 }
 
-export async function saveContentAddressedPdf(root: string, input: UploadInput): Promise<{ sourceSha256: string; path: string; created: boolean }> {
+export async function saveContentAddressedPdf(
+  root: string,
+  input: UploadInput,
+): Promise<{ sourceSha256: string; path: string; created: boolean }> {
   validatePdfUpload(input);
   const sourceSha256 = createHash("sha256").update(input.bytes).digest("hex");
   const directory = join(root, sourceSha256.slice(0, 2));

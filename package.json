@@ -18,6 +18,7 @@
     "lint": "biome lint apps packages scripts tests playwright.config.ts",
     "build:backend-packages": "node scripts/build-backend-packages.mjs",
     "typecheck": "npm run build:backend-packages && tsc --noEmit && npm run typecheck --workspaces --if-present",
+    "test:runtime-integration": "vitest run tests/integration/storage/sqlite-storage.test.ts tests/integration/documents/pdf-ingestion.test.ts tests/integration/documents/upload.test.ts tests/integration/api/workflow-http.test.ts",
     "test": "npm run build:backend-packages && vitest run tests/contracts tests/platform",
     "contract:generate": "node scripts/contract-generate.mjs",
     "contract:check": "node scripts/contract-check.mjs",
@@ -26,7 +27,7 @@
     "smoke": "npm run build && node scripts/platform-smoke.mjs",
     "e2e:smoke": "npm run build && playwright test --config=playwright.config.ts",
     "security": "node scripts/security-scan-test.mjs && node scripts/security-scan.mjs",
-    "ci": "npm run format && npm run lint && npm run typecheck && npm run test && npm run contract && npm run build && npm run smoke && npm run e2e:smoke && npm run security && git diff --check",
+    "ci": "npm run format && npm run lint && npm run typecheck && npm run test:runtime-integration && npm run test && npm run contract && npm run build && npm run smoke && npm run e2e:smoke && npm run security && git diff --check",
     "api": "npm run --workspace apps/api start",
     "worker": "npm run --workspace apps/worker start",
     "web": "npm run --workspace apps/web start"

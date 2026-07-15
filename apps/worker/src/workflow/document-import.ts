@@ -12,6 +12,7 @@ export interface ExtractedPage {
   page_number: number;
   canonical_page_text: string;
   canonical_page_text_sha256: string;
+  code_point_length: number;
 }
 
 export interface ExtractedDocument {

@@ -10,7 +10,7 @@
         "redistribution_allowed": true,
         "redistribution_class": "SYNTHETIC"
       },
-      "sha256": "72fc92fd6de757cc58ab0b500f94dde7d9c683701161245e858e1a85c83b3d1f",
+      "sha256": "99e07b4ba995b7c90bd84628a5db55b71a4faa1f06d3714a5942741cd39a55f8",
       "sha256_file": "synthetic-text.sha256",
       "purpose": "Minimal two-page extractable text PDF for deterministic ingestion, hashing, and Unicode coordinate tests"
     }

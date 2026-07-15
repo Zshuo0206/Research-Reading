@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -34,7 +35,7 @@ describe("SQLite storage", () => {
     });
     expect(
       database.prepare("SELECT version FROM schema_migrations").all(),
-    ).toEqual([{ version: 1 }, { version: 2 }]);
+    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
     database.close();
   });
 
@@ -53,6 +54,18 @@ describe("SQLite storage", () => {
       pageCount: 2,
       extractionProfileVersion: "1",
     });
+    const pages = ["Methods 😀", "Results and discussion"].map(
+      (canonicalPageText, index) => ({
+        pageNumber: index + 1,
+        canonicalPageText,
+        pageTextSha256: createHash("sha256")
+          .update(canonicalPageText, "utf8")
+          .digest("hex"),
+        extractionProfileVersion: "1",
+        codePointLength: Array.from(canonicalPageText).length,
+      }),
+    );
+    repository.saveDocumentPages("docv_one", pages);
     repository.createQuestion({
       questionPlanId: "qplan_one",
       documentVersionId: "docv_one",
@@ -87,6 +100,12 @@ describe("SQLite storage", () => {
     repository = new StorageRepository(database);
     expect(repository.getProject("proj_one")?.name).toBe("Methods");
     expect(repository.getDocumentVersion("docv_one")?.page_count).toBe(2);
+    expect(repository.getDocumentPages("docv_one")).toEqual(
+      pages.map((page) => ({
+        documentVersionId: "docv_one",
+        ...page,
+      })),
+    );
     expect(repository.getQuestion("question_one")?.text).toBe(
       "What method was used?",
     );

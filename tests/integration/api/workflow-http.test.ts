@@ -7,12 +7,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createApiServer } from "../../../apps/api/src/server.js";
 import { createWorkerRuntime } from "../../../apps/worker/src/runtime.js";
 import { createDocumentImportJobHandler } from "../../../apps/worker/src/workflow/document-import.js";
-import { extractTextPdf } from "../../../packages/pdf/src/index.js";
+import {
+  openDatabase,
+  StorageRepository,
+} from "../../../packages/storage/src/index.js";
+import { extractTextPdf, sha256 } from "../../../packages/pdf/src/index.js";
 
 const fixture = fileURLToPath(
   new URL("../../fixtures/pdf/synthetic-text.pdf", import.meta.url),
 );
 const temporaryDirectories: string[] = [];
+const migrationsDirectory = fileURLToPath(
+  new URL("../../../apps/api/migrations/", import.meta.url),
+);
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0))
@@ -20,6 +27,147 @@ afterEach(() => {
 });
 
 describe("Wave 1 workflow HTTP API", () => {
+  it("runs real PDF import and question plan through default runtimes", async () => {
+    const setup = createSetup();
+    const app = createApiServer({
+      databasePath: setup.databasePath,
+      contentRoot: setup.contentRoot,
+    });
+    const project = data(
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/projects",
+        payload: { name: "Default PDF runtime" },
+      }),
+    );
+    const upload = data(
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${project.project_id}/documents`,
+        headers: {
+          "content-type": "application/pdf",
+          "x-filename": "synthetic-text.pdf",
+          "idempotency-key": "default-import",
+        },
+        payload: await readFile(fixture),
+      }),
+    );
+
+    const worker = createWorkerRuntime(
+      "worker_default_pdf",
+      setup.databasePath,
+    );
+    expect(await worker.jobRuntime.runOnce()).toBe(true);
+    worker.database.close();
+
+    expect(
+      data(
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/jobs/${upload.job_id}`,
+        }),
+      ),
+    ).toMatchObject({ status: "SUCCEEDED", job_type: "DOCUMENT_IMPORT" });
+    expect(
+      data(
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/documents/${upload.document_id}`,
+        }),
+      ),
+    ).toMatchObject({
+      document_version: {
+        document_version_id: upload.document_version_id,
+        page_count: 2,
+        extraction_profile_version: "1",
+      },
+    });
+
+    const inspectionDatabase = openDatabase(setup.databasePath, {
+      migrationsDirectory,
+    });
+    const inspectionStorage = new StorageRepository(inspectionDatabase);
+    expect(
+      inspectionStorage.getDocumentPages(upload.document_version_id),
+    ).toEqual([
+      {
+        documentVersionId: upload.document_version_id,
+        pageNumber: 1,
+        canonicalPageText: "Research Reading synthetic fixture.\nPage one.",
+        pageTextSha256: sha256(
+          "Research Reading synthetic fixture.\nPage one.",
+        ),
+        extractionProfileVersion: "1",
+        codePointLength: [..."Research Reading synthetic fixture.\nPage one."]
+          .length,
+      },
+      {
+        documentVersionId: upload.document_version_id,
+        pageNumber: 2,
+        canonicalPageText: "U n i c o d e = c a f Ø",
+        pageTextSha256: sha256("U n i c o d e = c a f Ø"),
+        extractionProfileVersion: "1",
+        codePointLength: [..."U n i c o d e = c a f Ø"].length,
+      },
+    ]);
+
+    const questionJob = data(
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/document-versions/${upload.document_version_id}/question-plans`,
+        payload: questionRequest("default-question-plan"),
+      }),
+    );
+    const questionPayload = inspectionStorage.getJob(questionJob.jobId)
+      ?.payload as {
+      contextSpans: Array<{ page_number: number; text: string }>;
+    };
+    expect(questionPayload.contextSpans).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          page_number: 1,
+          text: "Research Reading synthetic fixture.\nPage one.",
+        }),
+        expect.objectContaining({
+          page_number: 2,
+          text: "U n i c o d e = c a f Ø",
+        }),
+      ]),
+    );
+    inspectionDatabase.close();
+
+    const questionWorker = createWorkerRuntime(
+      "worker_default_question",
+      setup.databasePath,
+    );
+    expect(await questionWorker.jobRuntime.runOnce()).toBe(true);
+    questionWorker.database.close();
+    expect(
+      data(
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/jobs/${questionJob.jobId}`,
+        }),
+      ),
+    ).toMatchObject({ status: "SUCCEEDED", job_type: "QUESTION_PLAN" });
+    expect(
+      data(
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/document-versions/${upload.document_version_id}/question-plan`,
+        }),
+      ),
+    ).toMatchObject({
+      document_version_id: upload.document_version_id,
+      questions: expect.arrayContaining([
+        expect.objectContaining({
+          revision: expect.objectContaining({ text: expect.any(String) }),
+        }),
+      ]),
+    });
+    await app.close();
+  });
+
   it("runs the complete Mock browser closure and restores it after reopening", async () => {
     const setup = createSetup();
     const app = createApiServer({
@@ -341,6 +489,11 @@ describe("Wave 1 workflow HTTP API", () => {
     const workerWithoutImport = createWorkerRuntime(
       "worker_without_import",
       setup.databasePath,
+      {
+        documentImportHandler: async () => {
+          throw new Error("test document import failure");
+        },
+      },
     );
     expect(await workerWithoutImport.jobRuntime.runOnce()).toBe(true);
     workerWithoutImport.database.close();
