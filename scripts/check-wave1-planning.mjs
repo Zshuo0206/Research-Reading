@@ -5,9 +5,7 @@ const root = process.cwd();
 const taskDirectory = path.join(root, "docs", "tasks", "backlog");
 const taskFiles = fs
   .readdirSync(taskDirectory, { withFileTypes: true })
-  .filter(
-    (entry) => entry.isFile() && /^T-W1-.*\.yaml$/.test(entry.name),
-  )
+  .filter((entry) => entry.isFile() && /^T-W1-.*\.yaml$/.test(entry.name))
   .map((entry) => path.join(taskDirectory, entry.name))
   .sort();
 
