@@ -502,19 +502,21 @@ describe("guided learning runtime", () => {
       },
     });
     expect(created.statusCode).toBe(200);
-    const session = (
+    const createdData = (
       created.json() as {
         data: {
-          session_id: string;
-          candidate_directions: Array<{ direction_id: string }>;
+          session: { session_id: string; state: string };
+          job_id: string;
         };
       }
     ).data;
+    expect(createdData.session.state).toBe("CREATED");
+    expect(createdData.job_id).toMatch(/^job_/);
     expect(
       (
         await app.inject({
           method: "GET",
-          url: `/api/v1/guided-learning/sessions/${session.session_id}`,
+          url: `/api/v1/guided-learning/sessions/${createdData.session.session_id}`,
         })
       ).statusCode,
     ).toBe(200);
@@ -522,18 +524,18 @@ describe("guided learning runtime", () => {
       (
         await app.inject({
           method: "POST",
-          url: `/api/v1/guided-learning/sessions/${session.session_id}/commands`,
+          url: `/api/v1/guided-learning/sessions/${createdData.session.session_id}/commands`,
           payload: {
             contract_version: "guided-learning.v1",
             event: "SELECT_DIRECTION",
             payload: {
-              direction_id: session.candidate_directions[0]?.direction_id,
+              direction_id: "direction_method",
             },
             idempotency_key: "api-idem",
           },
         })
       ).statusCode,
-    ).toBe(200);
+    ).toBe(409);
     expect(
       (
         await app.inject({

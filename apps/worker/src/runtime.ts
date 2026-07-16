@@ -11,6 +11,7 @@ import {
 } from "../../../packages/runtime-secrets/dist/index.js";
 import {
   openDatabase,
+  GuidedLearningSessionRepository,
   StorageRepository,
 } from "../../../packages/storage/dist/index.js";
 import {
@@ -26,6 +27,8 @@ import {
   createDocumentImportJobHandler,
   type TextPdfExtractor,
 } from "./workflow/document-import.js";
+import { createGuidedLearningJobHandlers } from "./workflow/guided-learning.js";
+import type { GuidedLearningWorkerModelGateway } from "./workflow/guided-learning.js";
 
 const migrationsDirectory = fileURLToPath(
   new URL("../../api/migrations/", import.meta.url),
@@ -40,7 +43,10 @@ export interface WorkerRuntime {
 export function createWorkerRuntime(
   workerId = process.env.WORKER_ID ?? "worker-local",
   databasePath = process.env.SQLITE_DATABASE_PATH ?? ":memory:",
-  options: { documentImportHandler?: JobHandler } = {},
+  options: {
+    documentImportHandler?: JobHandler;
+    guidedLearningGateway?: GuidedLearningWorkerModelGateway;
+  } = {},
 ): WorkerRuntime {
   const database = openDatabase(databasePath, { migrationsDirectory });
   const storage = new StorageRepository(database);
@@ -69,6 +75,11 @@ export function createWorkerRuntime(
     QUESTION_PLAN: createQuestionPlanJobHandler(gateway),
     ANSWER_GENERATION: createAnswerGenerationJobHandler(gateway),
     DOCUMENT_IMPORT: documentImportHandler,
+    ...createGuidedLearningJobHandlers({
+      repository: new GuidedLearningSessionRepository(database),
+      storage,
+      gateway: options.guidedLearningGateway ?? gateway,
+    }),
   };
 
   return {

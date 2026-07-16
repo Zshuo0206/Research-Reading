@@ -12,6 +12,7 @@ export type {
   GuidedLearningCommandRecord,
   GuidedLearningCommandWrite,
   GuidedLearningFailureRecord,
+  GuidedLearningJobWrite,
   GuidedLearningSaveOptions,
 } from "./guided-learning-repository.js";
 export type * from "./types.js";
