@@ -1,18 +1,17 @@
 # Current State
 
 最后更新：2026-07-16（Asia/Shanghai）
-状态：`WAVE_1_GUIDED_LEARNING_WEB_IMPLEMENTED_E2E_PENDING`
+状态：`WAVE_1_ACCEPTED_WITH_KNOWN_LIMITATIONS`
 
 产品需求基线：V1.0 产品定义已归档至
 `docs/product/versions/科研文献引导式学习平台_V1.0产品定义.md`，开发需求见
 `docs/product/v1.0-development-requirements.md`。
 RFC-W1-002 仍为 `PROPOSED`；契约版本与状态机部分已通过独立决策记录落地。
-`guided-learning.v1` runtime 已进入 main；T-W1-013 API/SQLite runtime、T-W1-014 Worker 生成和 T-W1-015 Web Workbench 已集成 main。真实 PDF 完整 E2E、BYOK 和产品验收
-仍需按依赖单独执行。
+`guided-learning.v1` runtime、T-W1-013 API/SQLite runtime、T-W1-014 Worker 生成和 T-W1-015 Web Workbench 已集成 main。T-W1-016 已在独立验收分支完成自动验收和发布证据；真实 BYOK 与人类产品验收仍待决定。
 
 ## main 当前基线
 
-- `main`、`origin/main` 当前指向 T-W1-015 合并提交；合并前基线为 `5b6c29c14f5ccb6d524004565a36fa761cd800a2`，已包含 T-W1-014 Worker 集成。
+- `main`、`origin/main` 验收基线为 `b8e60fc2cd2f0942243b01ae59cce2d962ef56ee`；T-W1-016 验收分支在该基线之上包含一项 BYOK 错误分类最小修复，尚未合并回 main。
 - PR #2、PR #3、PR #4 已合并；PR #4 合并了 `guided-learning.v1` 契约实现。
 - T-W1-011 已集成；T-W1-013 API/SQLite runtime 和 T-W1-014 Worker 生成已进入 main。
 
@@ -63,6 +62,7 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-013：`INTEGRATED`，Guided Learning API/SQLite runtime 已进入 main。
 - T-W1-014：`REVIEW`，已完成并进入 main；包含四类 Worker Job、原子入队、真实 PDF Mock 闭环和失败重试，仍待后续审查收口。
 - T-W1-015：`REVIEW`，已进入 main；包含 Guided Learning Web 入口、目标/PDF/Session 创建、轮询恢复、方向选择、逐题反馈、Evidence、重试和阶段总结，仍待真实 PDF 完整 E2E、BYOK 和产品验收。
+- T-W1-016：`REVIEW`，已完成全新数据库、Mock 全链路、刷新/重启恢复、失败/RETRY、EDIT_ANSWER、Evidence、快速问答、CORS、BYOK 自动检查和发布文档；真实 BYOK 人工验收因缺少用户凭据阻塞。
 - T-W1-005：保持 `DRAFT`；扩展后的双模式完整范围尚未进入 main；快速问答子集和 Guided Learning API/SQLite runtime 已存在，其余 Web 和完整产品验收仍待实施。
 - T-W1-006：保持 `DRAFT`；最小快速问答 Web 和 T-W1-015 Guided Learning Web 已存在，但其完整任务范围仍待实施。
 - 不据此改变其他任务或 Gate 的状态。
@@ -73,13 +73,14 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-011 最终契约门禁：`npm run contract:generate`、`npm run contract:check`、`npm run contract` 通过；guided-learning 定向 Vitest 13/13；`npm test` 24/24；lint、typecheck、build、security 通过，security 报告 0 vulnerabilities；`git diff --check` 通过。
 - T-W1-014 集成验证：Guided Learning runtime + Worker 定向测试 11/11，runtime integration 25/25，`npm test` 24/24，planning、lint、typecheck、contract、build、security scan 和 `git diff --check` 通过；未执行 online `npm audit`。
 - T-W1-015 合并验证：Web API client/轮询 5/5，Guided Learning runtime + Worker 12/12，Playwright Web smoke 3/3（含快速问答回归和 Guided Learning Mock-shaped 流程），runtime integration 26/26，真实 `synthetic-text.pdf` 后端 Mock 闭环保持通过；BYOK 人工验收尚未执行。
+- T-W1-016 验收分支验证：全新 SQLite migration 1–5、schema version 5、API/Worker 同库和重启恢复通过；BYOK/Mock 定向 17/17；完整 planning、check、lint、typecheck、runtime integration 26/26、`npm test` 24/24、contract、build、Playwright 3/3、smoke、security scan 和 `git diff --check` 通过。
 - 本地完整 `npm run ci` 仍在首步 `format` 受既有 Windows CRLF checkout 问题阻断；本次不批量改写全仓换行。
 - `contract:check` 本身已通过；不能把本地 CI 的 CRLF 阻断写成契约 drift 失败。
 - T-W1-011 分支未实际运行 smoke；本次文档同步不补写未执行结果，且本轮未修改 runtime。
 
 ## 尚未解决的问题
 
-- T-W1-015 已合并 main；Wave 1 真实 PDF 完整 E2E、真实 BYOK 人工验收和完整产品验收尚未完成。
+- T-W1-015 已合并 main；T-W1-016 验收修复尚未合并 main；真实 BYOK 人工验收和完整产品验收尚未完成。
 - 全仓 Windows CRLF format 基线治理尚未解决。
 - RFC-W1-002 仍需完整的产品/技术审批，不因契约决定记录而整体变为 `ACCEPTED`。
 
@@ -87,7 +88,8 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 
 按依赖顺序，下一步应是：
 
-1. 使用真实可提取文本 PDF 完成 Wave 1 完整 E2E，再执行 BYOK 人工验收和完整产品验收。
+1. 由人类项目负责人决定是否接受 `ACCEPTED_WITH_KNOWN_LIMITATIONS`。
+2. 提供真实凭据后完成 BYOK 人工连接和最小生成/Evidence 验收，再按治理流程集成验收分支。
 
 不自动扩大 T-W1-005/T-W1-006 的范围；不因 T-W1-014 集成而宣称整个 Wave 1 完成。
 
