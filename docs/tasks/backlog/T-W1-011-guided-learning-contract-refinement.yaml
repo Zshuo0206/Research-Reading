@@ -1,7 +1,7 @@
 task_id: T-W1-011
 title: "细化引导式学习公共契约与状态机"
 owner_role: contract-agent
-status: DRAFT
+status: INTEGRATED
 wave: 1
 
 objective: "在 RFC-W1-002 获得技术审查结论后，为 V1.0 引导式学习提供版本化、可测试且兼容快速问答的契约。"
@@ -34,7 +34,12 @@ forbidden_paths:
   - apps/api/src/**
   - apps/web/src/**
   - package.json
-contract_version: "wave1.v1 或 guided-learning.v1（由 RFC 审查决定）"
+contract_version: "guided-learning.v1（保留 wave1.v1 快速问答兼容）"
+
+completion_evidence:
+  merge_commit: "2efdcd3aafe42bdbf3ad44baa268b43f523e40f6"
+  pull_request: 4
+  decision_record: "docs/contracts/guided-learning-contract-version-decision.md"
 
 inputs:
   - name: "已审查的 V1.0 产品需求和 RFC-W1-002"

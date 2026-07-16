@@ -1,0 +1,85 @@
+task_id: T-W1-012
+title: "同步 Wave 1 实际状态与开发日志"
+owner_role: orchestrator
+status: DONE
+wave: 1
+
+objective: "基于已合并 main 和实际代码同步开发日志、CURRENT_STATE、日志索引、任务状态、README 和技术方案状态说明。"
+background: "PR #2、PR #3、PR #4 已进入 main；旧状态入口仍停留在早期 Wave 0/第一轮描述，需要恢复为可信的当前状态。"
+scope:
+  - "记录真实 PDF、V1.0 产品/开发需求和 guided-learning.v1 契约的已合并结果。"
+  - "区分已实现的快速问答 runtime、已集成的 guided-learning.v1 契约和尚未进入 main 的引导式学习 runtime。"
+  - "同步 T-W1-010、T-W1-011 和本任务的生命周期状态，不改变未获批准的产品范围或 Gate。"
+  - "保留 RFC-W1-002 的 PROPOSED 状态和历史开发日志，不修改应用实现。"
+out_of_scope:
+  - "不修改应用代码、契约实现、Schema、测试实现、数据库迁移或依赖。"
+  - "不修改 RFC 正文状态，不自动解锁 T-W1-005/T-W1-006；不改变 T-W1-013 的独立授权和隔离状态。"
+  - "不批量修复全仓库 CRLF，不重写历史开发日志。"
+dependencies:
+  - task_id: T-W1-010
+    reason: "需要已合并的 V1.0 产品与开发需求基线。"
+  - task_id: T-W1-011
+    reason: "需要已合并的 guided-learning.v1 契约决定与验证事实。"
+
+writable_paths:
+  - README.md
+  - docs/CURRENT_STATE.md
+  - docs/devlog/INDEX.md
+  - docs/devlog/2026-07-15.md
+  - docs/architecture/wave1-technical-plan.md
+  - docs/tasks/backlog/T-W1-010-product-definition-and-development-requirements.yaml
+  - docs/tasks/backlog/T-W1-011-guided-learning-contract-refinement.yaml
+  - docs/tasks/backlog/T-W1-012-state-and-devlog-sync.yaml
+read_only_paths:
+  - apps/**
+  - packages/**
+  - tests/**
+  - scripts/**
+  - docs/rfcs/**
+  - docs/product/**
+forbidden_paths:
+  - package.json
+  - package-lock.json
+  - apps/**
+  - packages/**
+  - tests/**
+  - scripts/**
+  - docs/rfcs/**
+  - docs/product/**
+contract_version: "documentation-only"
+
+inputs:
+  - name: "已合并 main、实际实现、任务文件和历史日志"
+    type: "repository-state"
+    source: "git log、git show、当前 main 文件和实际测试记录"
+outputs:
+  - name: "同步后的 Wave 1 状态、日志、任务和入口文档"
+    type: "governed-documentation"
+    destination: "README.md、docs/CURRENT_STATE.md、docs/devlog、docs/tasks"
+
+acceptance_criteria:
+  - "CURRENT_STATE、README、devlog INDEX、2026-07-15 日志和技术方案状态说明与当前 main 一致。"
+  - "T-W1-010 和 T-W1-011 状态准确为 INTEGRATED；T-W1-005/T-W1-006 保持 DRAFT。"
+  - "T-W1-011 的 guided-learning.v1 合并、契约门禁、测试和 runtime 尚未进入 main 的边界均有事实依据。"
+  - "RFC-W1-002 保持 PROPOSED，未自动扩大产品范围或 Gate。"
+  - "所有修改均位于本任务声明的文档路径。"
+required_tests:
+  - "node scripts/check-wave1-planning.mjs"
+  - "node scripts/check.mjs all"
+  - "git diff --check"
+  - "Markdown 引用路径存在性检查"
+manual_acceptance:
+  - "主控确认文档、任务状态和实际 main 不互相矛盾。"
+security_considerations:
+  - "不复制密钥、数据库、上传文件、论文全文或运行时机密。"
+  - "不改变应用安全边界、契约边界或 Gate 授权。"
+risks:
+  - risk: "状态同步错误地把契约集成写成完整产品交付。"
+    mitigation: "分别记录 runtime 基线、契约/骨架和尚未进入 main 的 runtime，并保留 T-W1-005/T-W1-006 为 DRAFT。"
+  - risk: "旧历史日志被改写以掩盖当时状态。"
+    mitigation: "只新增 2026-07-15 日志和最小入口校正，保留旧日志正文。"
+rollback_plan: "回退本任务新增/修改的文档，不触碰 main 中已合并的应用、契约、测试或数据库实现。"
+deliverables:
+  - "同步后的 CURRENT_STATE、README 和 devlog 索引/日志。"
+  - "T-W1-010、T-W1-011、T-W1-012 任务状态记录。"
+  - "Wave 1 technical plan 的最小状态校正说明。"
