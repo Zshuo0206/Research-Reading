@@ -8,6 +8,7 @@ import {
 import {
   openDatabase,
   StorageRepository,
+  GuidedLearningSessionRepository,
   WorkflowRepository,
 } from "../../../packages/storage/dist/index.js";
 import { ByokConnectionTestApi } from "./byok/connection-test.js";
@@ -15,6 +16,8 @@ import { DocumentIngestService } from "./document-ingest/service.js";
 import { WorkflowApiHandlers } from "./workflow/handlers.js";
 import { WorkflowHttpService } from "./workflow/http-service.js";
 import { WorkflowService } from "./workflow/service.js";
+import { GuidedLearningApiHandlers } from "./guided-learning/handlers.js";
+import { GuidedLearningRuntime } from "./guided-learning/runtime.js";
 
 const migrationsDirectory = fileURLToPath(
   new URL("../migrations/", import.meta.url),
@@ -28,6 +31,8 @@ export interface ApiRuntime {
   workflowHttp: WorkflowHttpService;
   documentIngest: DocumentIngestService;
   byokConnectionTestApi: ByokConnectionTestApi;
+  guidedLearningRuntime: GuidedLearningRuntime;
+  guidedLearningHandlers: GuidedLearningApiHandlers;
 }
 
 export function createApiRuntime(
@@ -41,6 +46,9 @@ export function createApiRuntime(
     new WorkflowRepository(database),
   );
   const workflowHandlers = new WorkflowApiHandlers(workflowService);
+  const guidedLearningRuntime = new GuidedLearningRuntime(
+    new GuidedLearningSessionRepository(database),
+  );
   const sessionSecrets = new SessionMemorySecretStore();
   const gateway = new OpenAICompatibleByokGateway(
     new RuntimeSecretResolver(sessionSecrets),
@@ -59,5 +67,9 @@ export function createApiRuntime(
     ),
     documentIngest: new DocumentIngestService(storage, contentRoot),
     byokConnectionTestApi: new ByokConnectionTestApi(gateway, sessionSecrets),
+    guidedLearningRuntime,
+    guidedLearningHandlers: new GuidedLearningApiHandlers(
+      guidedLearningRuntime,
+    ),
   };
 }

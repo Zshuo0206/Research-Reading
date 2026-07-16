@@ -21,6 +21,7 @@ export function createApiServer(
 
   app.decorate("workflowApiHandlers", runtime.workflowHandlers);
   app.decorate("byokConnectionTestApi", runtime.byokConnectionTestApi);
+  app.decorate("guidedLearningApiHandlers", runtime.guidedLearningHandlers);
   app.addHook("onClose", async () => {
     runtime.database.close();
   });
@@ -31,6 +32,83 @@ export function createApiServer(
     wave: 1,
     schema_version: "api.v1",
   }));
+
+  app.post("/api/v1/guided-learning/sessions", async (request, reply) => {
+    const body = request.body as
+      | {
+          project_id?: unknown;
+          document_version_id?: unknown;
+          learning_goal?: unknown;
+        }
+      | undefined;
+    return runtime.guidedLearningHandlers
+      .handle(requestId(request.id), () => {
+        if (
+          !body ||
+          typeof body.project_id !== "string" ||
+          typeof body.document_version_id !== "string" ||
+          typeof body.learning_goal !== "string"
+        )
+          throw validationError(
+            "project_id, document_version_id and learning_goal are required",
+          );
+        return runtime.guidedLearningHandlers.create({
+          project_id: body.project_id,
+          document_version_id: body.document_version_id,
+          learning_goal: body.learning_goal,
+        });
+      })
+      .then((result) => reply.code(result.statusCode).send(result.body));
+  });
+
+  app.get(
+    "/api/v1/guided-learning/sessions/:sessionId",
+    async (request, reply) => {
+      const { sessionId } = request.params as { sessionId?: string };
+      return runtime.guidedLearningHandlers
+        .handle(requestId(request.id), () => {
+          if (!sessionId) throw validationError("sessionId is required");
+          return runtime.guidedLearningHandlers.get(sessionId);
+        })
+        .then((result) => reply.code(result.statusCode).send(result.body));
+    },
+  );
+
+  app.post(
+    "/api/v1/guided-learning/sessions/:sessionId/commands",
+    async (request, reply) => {
+      const { sessionId } = request.params as { sessionId?: string };
+      const body = request.body as
+        | {
+            contract_version?: unknown;
+            event?: unknown;
+            payload?: unknown;
+            idempotency_key?: unknown;
+          }
+        | undefined;
+      return runtime.guidedLearningHandlers
+        .handle(requestId(request.id), () => {
+          if (
+            !sessionId ||
+            !body ||
+            typeof body.contract_version !== "string" ||
+            typeof body.event !== "string" ||
+            typeof body.idempotency_key !== "string" ||
+            body.payload === undefined
+          )
+            throw validationError(
+              "contract_version, event, payload and idempotency_key are required",
+            );
+          return runtime.guidedLearningHandlers.command(sessionId, {
+            contract_version: body.contract_version,
+            event: body.event,
+            payload: body.payload,
+            idempotency_key: body.idempotency_key,
+          });
+        })
+        .then((result) => reply.code(result.statusCode).send(result.body));
+    },
+  );
 
   app.addContentTypeParser(
     "application/pdf",
