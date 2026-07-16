@@ -1,0 +1,26 @@
+.guided-learning-workbench { display: grid; gap: 1rem; }
+.guided-learning-grid { display: grid; grid-template-columns: minmax(16rem, .8fr) minmax(24rem, 1.4fr); gap: 1rem; align-items: start; }
+.guided-learning-card { border: 1px solid #d7dce5; border-radius: .75rem; padding: 1rem; background: #fff; }
+.guided-learning-card + .guided-learning-card { margin-top: .75rem; }
+.guided-learning-card h3, .guided-learning-card h4 { margin-top: 0; }
+.guided-learning-form { display: grid; gap: .65rem; }
+.guided-learning-form textarea, .guided-learning-form input, .guided-learning-form button { font: inherit; }
+.guided-learning-form textarea, .guided-learning-form input { box-sizing: border-box; width: 100%; padding: .6rem; border: 1px solid #aeb7c5; border-radius: .4rem; }
+.guided-learning-form textarea { min-height: 7rem; resize: vertical; }
+.guided-learning-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.guided-learning-actions button { padding: .55rem .8rem; border: 1px solid #56657a; border-radius: .4rem; background: #f5f7fa; cursor: pointer; }
+.guided-learning-actions button[type="submit"], .guided-learning-primary { color: #fff; border-color: #1f4f85; background: #1f4f85; }
+.guided-learning-actions button:disabled { cursor: not-allowed; opacity: .55; }
+.guided-learning-status { color: #39485a; border-left: .25rem solid #5a789d; padding: .65rem .8rem; background: #f1f5f9; }
+.guided-learning-error { color: #8d1d1d; border-left-color: #b42318; background: #fff2f0; }
+.guided-learning-success { color: #1c5b35; border-left-color: #2e8b57; background: #effaf2; }
+.guided-learning-directions { display: grid; gap: .75rem; }
+.guided-learning-direction { border: 1px solid #c8d2df; border-radius: .6rem; padding: .8rem; }
+.guided-learning-direction.selected { border-color: #1f4f85; box-shadow: 0 0 0 2px #d7e7fa; }
+.guided-learning-meta { color: #586678; font-size: .9rem; }
+.guided-learning-evidence { margin-top: .75rem; border-top: 1px solid #e1e6ed; padding-top: .75rem; }
+.guided-learning-evidence blockquote { margin: .5rem 0; padding-left: .75rem; border-left: .2rem solid #8ca2ba; }
+.guided-learning-pdf { width: 100%; min-height: 28rem; border: 1px solid #d7dce5; border-radius: .5rem; background: #f5f7fa; }
+.guided-learning-route { display: grid; gap: .5rem; padding: 0; list-style: none; }
+.guided-learning-route li { display: flex; justify-content: space-between; gap: .75rem; border-bottom: 1px solid #e8ebf0; padding: .45rem 0; }
+@media (max-width: 760px) { .guided-learning-grid { grid-template-columns: 1fr; } .guided-learning-pdf { min-height: 20rem; } }

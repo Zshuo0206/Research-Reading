@@ -7,6 +7,7 @@ import type {
   ReviewStatus,
   VerificationStatus,
 } from "../../../packages/contracts/wave1/src/index.js";
+import { GuidedLearningWorkbench } from "./features/guided-learning/GuidedLearningWorkbench.js";
 
 type JobKind = "DOCUMENT_IMPORT" | "QUESTION_PLAN" | "ANSWER_GENERATION";
 type JobView = { kind: JobKind; state: JobState; message: string };
@@ -29,6 +30,12 @@ function Status({ children }: { children: string }) {
 }
 
 function Workbench() {
+  const [mode, setMode] = useState<"QUICK" | "GUIDED">(() =>
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("guidedSession")
+      ? "GUIDED"
+      : "QUICK",
+  );
   const [projectName, setProjectName] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -103,6 +110,25 @@ function Workbench() {
     });
   };
 
+  if (mode === "GUIDED")
+    return (
+      <main>
+        <header>
+          <h1>Research Reading</h1>
+          <p>Method-learning workbench · local, single-user session</p>
+        </header>
+        <nav aria-label="Learning mode" className="guided-learning-actions">
+          <button type="button" onClick={() => setMode("QUICK")}>
+            快速问答
+          </button>
+          <button type="button" disabled>
+            引导式学习
+          </button>
+        </nav>
+        <GuidedLearningWorkbench onBack={() => setMode("QUICK")} />
+      </main>
+    );
+
   return (
     <main>
       <header>
@@ -115,6 +141,15 @@ function Workbench() {
         connected. API keys stay only in this browser session and are never
         displayed after input.
       </p>
+
+      <nav aria-label="Learning mode" className="guided-learning-actions">
+        <button type="button" disabled>
+          快速问答
+        </button>
+        <button type="button" onClick={() => setMode("GUIDED")}>
+          引导式学习
+        </button>
+      </nav>
 
       <section aria-labelledby="project-heading">
         <h2 id="project-heading">1. Create project</h2>
