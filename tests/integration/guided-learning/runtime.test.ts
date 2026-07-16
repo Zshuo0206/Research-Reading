@@ -247,6 +247,33 @@ describe("guided learning runtime", () => {
     rt.database.close();
   });
 
+  it("requeues feedback generation when the current answer is edited", () => {
+    const rt = makeRuntime();
+    const prepared = prepareAnsweredSession(rt);
+    rt.guidedLearningRuntime.writeFeedback({
+      session_id: prepared.sessionId,
+      ...makeFeedback("docv_test"),
+    });
+    const edited = prepared.command(
+      "EDIT_ANSWER",
+      {
+        question_id: prepared.question?.question_id,
+        question_order: prepared.question?.order,
+        answer: "修改后的回答",
+      },
+      "edit-answer",
+    );
+    expect(edited.session.state).toBe("ANSWER_SUBMITTED");
+    expect(
+      rt.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM jobs WHERE kind = 'GUIDED_LEARNING_FEEDBACK_GENERATION'",
+        )
+        .get(),
+    ).toEqual({ count: 2 });
+    rt.database.close();
+  });
+
   it("records retryable failure and restores its resume state", () => {
     const rt = makeRuntime();
     const session = rt.guidedLearningRuntime.createSession({

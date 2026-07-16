@@ -8,6 +8,24 @@ export function createApiServer(
 ) {
   const app = Fastify({ logger: false });
   const runtime = createApiRuntime(options.databasePath, options.contentRoot);
+  app.addHook("onRequest", async (request, reply) => {
+    const origin = request.headers.origin;
+    if (
+      origin === "http://127.0.0.1:4173" ||
+      origin === "http://localhost:4173"
+    ) {
+      reply.header("access-control-allow-origin", origin);
+      reply.header(
+        "access-control-allow-headers",
+        "accept, content-type, idempotency-key, x-filename, x-request-id",
+      );
+      reply.header(
+        "access-control-allow-methods",
+        "GET, POST, PATCH, DELETE, OPTIONS",
+      );
+    }
+    if (request.method === "OPTIONS") return reply.code(204).send();
+  });
   const sendHandled = async (
     reply: FastifyReply,
     id: string,

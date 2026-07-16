@@ -1,0 +1,85 @@
+task_id: T-W1-015
+title: "实现 Guided Learning Web Workbench"
+owner_role: frontend-agent
+status: REVIEW
+wave: 1
+
+objective: "把已进入 main 的 Guided Learning API/Worker 接入最小可用 Web 工作台，完成真实文本 PDF 下的可恢复理解阶段闭环。"
+background: "T-W1-014 已将四类 Guided Learning Job 和真实 PDF Mock 生成路径集成 main；本任务实现模式入口、项目/PDF/目标创建、方向选择、逐题学习、Evidence 展示、阶段总结和刷新恢复。"
+scope:
+  - "保留快速问答入口，并新增独立的引导式学习入口。"
+  - "通过现有 api.v1 envelope 完成项目创建、PDF 上传、Job 查询、Session 创建/查询和 Command。"
+  - "实现 Session URL 恢复、单一轮询器、loading/error/retry/pending 状态和有限网络重试。"
+  - "实现目标输入、候选方向、UNDERSTAND 路线、逐题回答/跳过、点评、参考答案、Evidence 页码/quote/验证状态和阶段总结。"
+  - "允许编辑当前回答并重新生成反馈；不复制服务端状态机。"
+  - "为跨 loopback origin 的本地 API 增加最小 CORS 响应头。"
+out_of_scope:
+  - "ANALYZE、TRANSFER、OCR、扫描 PDF、复杂 PDF 阅读器、真实 BYOK 联网 E2E。"
+  - "新的公共契约、数据库 migration、第二套 Session/Job 系统、WebSocket/SSE。"
+  - "评分、掌握等级、学习历史、导出、协作和完整产品验收。"
+dependencies:
+  - task_id: T-W1-014
+    reason: "Web 必须消费已集成的 Guided Learning Session、Command、Job、Evidence 和 Summary 后端能力。"
+
+writable_paths:
+  - apps/web/src/features/guided-learning/**
+  - apps/web/src/main.tsx
+  - apps/api/src/guided-learning/runtime.ts
+  - apps/api/src/server.ts
+  - tests/integration/web/**
+  - tests/integration/guided-learning/runtime.test.ts
+  - tests/e2e/web/**
+  - docs/tasks/backlog/T-W1-015-guided-learning-web.yaml
+  - docs/CURRENT_STATE.md
+  - docs/devlog/**
+  - package.json
+read_only_paths:
+  - packages/contracts/wave1/**
+  - tests/fixtures/pdf/synthetic-text.pdf
+  - apps/web/package.json
+  - apps/web/tsconfig.json
+  - apps/web/vite.config.ts
+forbidden_paths:
+  - packages/contracts/**
+  - apps/api/migrations/**
+  - apps/worker/**
+  - tests/fixtures/pdf/**/*.pdf
+contract_version: "api.v1 + guided-learning.v1 + document.v1"
+
+inputs:
+  - name: "项目、真实文本 PDF 和学习目标"
+    type: "versioned-api-request"
+    source: "Guided Learning Web Workbench"
+outputs:
+  - name: "可恢复的理解阶段 Web 闭环"
+    type: "browser-ui"
+    destination: "本地 loopback Web 工作台"
+
+acceptance_criteria:
+  - "快速问答和引导式学习入口、状态和数据完全分开。"
+  - "用户可创建项目、导入真实 PDF、输入目标、创建 Session 并等待 Worker 生成方向。"
+  - "用户可选择单一方向、开始 UNDERSTAND 阶段、逐题回答或跳过并看到服务端反馈。"
+  - "点评、参考答案和真实 Evidence 的页码、quote、稳定位置摘要与服务端返回一致。"
+  - "用户确认后主动进入下一题，最后看到阶段总结；ANALYZE/TRANSFER 保持锁定。"
+  - "URL 中的 guidedSession 可在刷新后重新读取服务端 Session；失效 Session 返回创建界面。"
+  - "Worker 失败显示安全摘要和 RETRY；不自动重建 Session，不覆盖 revision。"
+  - "编辑当前回答会清除旧反馈并重新入队反馈生成 Job。"
+required_tests:
+  - "Web API client envelope、业务/网络错误、create/get/command 和 request ID 测试。"
+  - "统一轮询的停止、Abort、有限重试和稳定状态测试。"
+  - "Playwright 快速问答回归和 Guided Learning Mock-shaped 完整流程测试。"
+  - "真实 synthetic-text.pdf 的 API/Worker → Evidence → Summary Mock 闭环测试。"
+manual_acceptance:
+  - "未执行真实 BYOK 人工验收；需要后续 QA/产品任务独立验收。"
+security_considerations:
+  - "前端只提交契约允许的 command payload，不提交 state、route、feedback、summary 或 verification 决策。"
+  - "API Key 不进入本任务状态、URL、日志或 Session payload；错误仅展示安全摘要。"
+  - "CORS 仅允许 127.0.0.1/localhost Web loopback origin。"
+risks:
+  - risk: "前端轮询和服务端 Session 状态发生竞态。"
+    mitigation: "每次请求完成后再安排下一次，使用 URL Session ID、AbortController 和服务端 revision/幂等校验。"
+rollback_plan: "回退 Web feature 和最小 API CORS/EDIT_ANSWER 修复；保留 T-W1-014 后端兼容能力。"
+deliverables:
+  - "Guided Learning Web Workbench 入口和理解阶段闭环。"
+  - "API client、统一轮询和刷新恢复实现。"
+  - "Web 定向、Mock 完整流程和回归测试。"

@@ -356,7 +356,7 @@ export class GuidedLearningRuntime {
         "GUIDED_LEARNING_QUESTION_GENERATION",
         "QUESTIONS_GENERATING",
       );
-    if (event === "SUBMIT_ANSWER")
+    if (event === "SUBMIT_ANSWER" || event === "EDIT_ANSWER")
       return this.generationJob(
         next,
         "GUIDED_LEARNING_FEEDBACK_GENERATION",
@@ -460,6 +460,10 @@ export class GuidedLearningRuntime {
         this.currentQuestion(next).status = "ANSWERED";
         this.currentQuestion(next).confirmation_status = "PENDING";
         this.currentQuestion(next).user_answer = value.answer;
+        delete this.currentQuestion(next).skip_reason;
+        delete this.currentQuestion(next).feedback;
+        delete this.currentQuestion(next).reference_answer;
+        delete this.currentQuestion(next).evidence;
         break;
       case "SKIP_QUESTION":
         requireKeys(value, ["question_id", "question_order", "reason"]);
