@@ -2,7 +2,7 @@
 
 这是一个问题驱动型科研文献阅读与研究资产管理平台的工程仓库。
 
-当前处于 **Wave 1**：真实文本 PDF 导入、快速问答、`guided-learning.v1` 契约、Guided Learning API/SQLite runtime、Worker、Web Workbench 和 Mock 端到端闭环已经进入 `main`。Wave 1 当前发布判定为 `ACCEPTED_WITH_KNOWN_LIMITATIONS`；真实 BYOK 人工验收和完整产品验收仍需由人类项目负责人决定。
+当前处于 **Wave 1**：真实文本 PDF 导入、快速问答、`guided-learning.v1` 契约、Guided Learning API/SQLite runtime、Worker、Web Workbench 和 Mock 端到端闭环已经进入 `main`。Mock 技术验收通过，但 Wave 1 当前发布判定为 `RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS`；真实 BYOK、模型驱动内容、语义 Evidence grounding、统一 Worker secret 和 PDF 刷新/页码跳转完成前不得发布。
 
 ## 快速入口
 

@@ -12,7 +12,7 @@
 - 结论：`有条件通过`
 - 主控技术验收结论：Mock 真实 PDF 全链路、空库 migration、恢复、Evidence、失败/RETRY、EDIT_ANSWER、快速问答回归、Web E2E 和本地安全边界均通过；发现的 BYOK 错误分类问题已最小修复并复验通过。
 - QA 独立检查结论：自动验收通过；真实 BYOK 人工验收因缺少用户凭据未执行。
-- 责任 Agent 交接状态：验收报告、运行手册、任务文件和状态日志已准备；验收分支尚未合并 main。
+- 责任 Agent 交接状态：验收报告、运行手册、任务文件和状态日志已准备；Mock 技术验收通过，V1.0 发布仍被五项阻塞项阻止。
 - 证据链接：`docs/acceptance/wave1-guided-learning-acceptance.md`、`docs/operations/wave1-local-runbook.md`
 
 ## 2. 强制检查与例外
@@ -40,14 +40,14 @@
 
 ## 5. 需要人类项目负责人决定的事项
 
-- 是否接受 `ACCEPTED_WITH_KNOWN_LIMITATIONS` 并允许集成验收分支。
+- 是否接受仅限 `MOCK_TECHNICAL_ACCEPTANCE_ONLY` 的技术证据；V1.0 发布不得在当前状态放行。
 - 何时提供真实 BYOK 凭据执行人工连接和最小生成/Evidence 验收。
 
 ## 6. 主控推荐
 
-- 推荐：`有条件通过`
-- 推荐理由：所有可自动执行的 Wave 1 技术门槛和 Mock 业务闭环均通过，且未发现阻断缺陷；唯一未完成项是缺少用户凭据导致的真实 BYOK 人工验收。
-- 若有条件通过，进入下一 Wave 前必须满足：完成人类项目负责人决定；若产品要求真实模型发布，则完成真实 BYOK 最小闭环并确认 Evidence。
+- 推荐：`不通过（发布阻塞）`
+- 推荐理由：Mock 技术验收和自动化门禁均通过，但真实 Guided Learning 仍固定使用 Mock，API/Worker secret 未统一，内容仍为固定模板，Evidence 尚未语义 grounding，PDF 刷新恢复和 Evidence 页码跳转未完成；真实 BYOK 人工验收也因缺少用户凭据未执行。
+- 进入下一 Wave 前必须完成 T-W1-017 的真实 BYOK、模型驱动生成、Evidence grounding、统一 Worker secret 和 PDF 恢复/页码跳转，并完成真实 BYOK 最小闭环。
 
 ## 7. 人类决定
 

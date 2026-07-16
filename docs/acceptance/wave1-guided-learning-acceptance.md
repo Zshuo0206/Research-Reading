@@ -4,8 +4,9 @@
 - 验收分支：`chore/w1-acceptance-release`
 - 验收 worktree：`D:\Research-Reading-Worktrees\w1-acceptance-release`
 - 验收基线 SHA：`b8e60fc2cd2f0942243b01ae59cce2d962ef56ee`
-- 状态：`PASS_WITH_KNOWN_LIMITATIONS`
-- Wave 1 发布判定：`ACCEPTED_WITH_KNOWN_LIMITATIONS`
+- Mock 技术验收：`PASS`
+- 状态：`RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS`
+- Wave 1 发布判定：`BLOCKED`
 
 ## 环境
 
@@ -63,7 +64,14 @@
 
 BYOK 自动安全检查已通过 17/17，确认 session key 不进入 API 结果或 SQLite，错误分类和 provider HTTP 映射正常。
 
-真实 BYOK 人工验收状态：`BLOCKED_BY_MISSING_USER_CREDENTIALS`。当前环境没有用户提供的 provider、endpoint、model 和 API key；未读取、索取或伪造凭据，未将 Mock 结果写成真实 BYOK 结果。需要人工验收时，按 [本地运行手册](../operations/wave1-local-runbook.md) 由操作员安全提供凭据。
+真实 BYOK 人工验收状态：`BLOCKED_BY_MISSING_USER_CREDENTIALS`。当前环境没有用户提供的 provider、endpoint、model 和 API key；未读取、索取或伪造凭据，未将 Mock 结果写成真实 BYOK 结果。缺少凭据不是唯一发布阻塞项：当前 Guided Learning Job 仍固定使用 `{ provider: "MOCK", fixture_id: "guided-learning-v1" }`，API 与 Worker 没有统一的真实 Worker secret 路径，方向/问题/点评/总结仍是固定模板，Evidence 只有结构校验而没有语义 grounding，PDF object URL 刷新后消失且 Evidence 没有页码跳转。需要人工验收时，按 [本地运行手册](../operations/wave1-local-runbook.md) 由操作员安全提供凭据。
+
+## 验收结论边界
+
+- migration、Mock 全链路、刷新/重启恢复、失败/RETRY、EDIT_ANSWER、Evidence 结构、BYOK 错误分类修复和自动化门禁均保留并通过。
+- 上述结果的适用范围是 `MOCK_TECHNICAL_ACCEPTANCE_ONLY`，不能推导出真实模型生成或 V1.0 发布通过。
+- 五项发布阻塞项为：真实 provider 生成路径、API/Worker 共享 secret、模型驱动内容、语义 Evidence grounding、PDF 刷新恢复与页码跳转。
+- 需要 T-W1-017 完成并由人类项目负责人在真实 BYOK 最小闭环后作最终产品决定。
 
 ## 修复记录
 
@@ -76,10 +84,10 @@ BYOK 自动安全检查已通过 17/17，确认 session key 不进入 API 结果
 - `ANALYZE`、`TRANSFER`、OCR、扫描 PDF、复杂视觉理解、远程部署和完整产品 Gate 仍未开放。
 - 未运行全仓 `npm run format`，避免既有 CRLF 假差异；contract 和 `git diff --check` 已单独通过。
 
-在没有阻断缺陷、Evidence 可回查、重启恢复、loopback 边界、自动化门禁全部通过且 BYOK 仅因缺少用户凭据未执行的前提下，Wave 1 标记为 `ACCEPTED_WITH_KNOWN_LIMITATIONS`，等待人类项目负责人确认。
+Mock 技术验收通过，但由于上述五项阻塞项，Wave 1 只能标记为 `RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS`，V1.0 发布为 `BLOCKED`。在 T-W1-017 完成真实 BYOK/模型驱动生成、Evidence grounding、统一 Worker secret 和 PDF 恢复/页码跳转，并完成真实 BYOK 人工验收前，不得标记为正式 `ACCEPTED`。
 
 ## 后续建议
 
-1. 由人类项目负责人决定是否接受当前已知限制。
-2. 提供真实 BYOK 凭据后执行一次本地人工连接和最小生成/Evidence 验收。
-3. 决定后再由主控 Agent 按治理流程集成 `chore/w1-acceptance-release`，不得直接跳过审查合并 main。
+1. 集成本报告作为 Mock 技术验收证据，但保持 V1.0 发布阻塞。
+2. 实施 T-W1-017，完成真实 BYOK、模型驱动生成、Evidence grounding 和 PDF 恢复/页码跳转。
+3. 提供真实 BYOK 凭据后执行本地人工连接和最小生成/Evidence 验收，再由主控 Agent 按治理流程请求产品决定。

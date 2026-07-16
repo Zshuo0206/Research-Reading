@@ -55,7 +55,7 @@ acceptance_criteria:
   - "API/Worker 使用同一数据库，关闭并重启后 Session、Job 和 schema 可恢复且不重复迁移。"
   - "快速问答回归、loopback host/CORS、secret 不落库/不进日志和 BYOK 自动测试通过。"
   - "验收报告明确记录真实 BYOK 因缺少用户凭据未执行，不把 Mock 结果表述为真实模型结果。"
-  - "Wave 1 发布判定为 ACCEPTED_WITH_KNOWN_LIMITATIONS，等待人类项目负责人对 BYOK/产品人工验收作最终决定。"
+  - "Mock 技术验收 PASS，但 V1.0 发布判定为 RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS；真实 provider 生成、统一 Worker secret、模型驱动内容、语义 Evidence grounding 和 PDF 刷新/页码跳转完成前不得发布。"
 required_tests:
   - "npm run build:backend-packages"
   - "node scripts/check-wave1-planning.mjs"
@@ -65,8 +65,8 @@ required_tests:
   - "node scripts/security-scan.mjs --skip-audit && git diff --check"
   - "Guided Learning API client/轮询、runtime/Worker、BYOK/Mock 定向测试"
 manual_acceptance:
-  - "使用真实用户提供的 provider、endpoint、model 和 API key 完成一次 BYOK 连接及最小生成闭环；当前因没有凭据标记为 BLOCKED_BY_MISSING_USER_CREDENTIALS。"
-  - "产品负责人确认 ACCEPTED_WITH_KNOWN_LIMITATIONS 是否满足 Wave 1 发布条件。"
+  - "使用真实用户提供的 provider、endpoint、model 和 API key 完成一次 BYOK 连接及最小生成闭环；当前因没有凭据标记为 BLOCKED_BY_MISSING_USER_CREDENTIALS，且真实生成路径尚未接入。"
+  - "产品负责人在 T-W1-017 完成并真实 BYOK 验证后确认 Wave 1 发布条件。"
 security_considerations:
   - "不读取、打印、提交或持久化真实 API key；session secret 只在内存 resolver 中解析。"
   - "API 只监听 127.0.0.1；CORS 只允许明确的本地 Web origin。"
