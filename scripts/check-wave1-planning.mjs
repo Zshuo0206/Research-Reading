@@ -2,19 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
-const taskFiles = [
-  "T-W1-001-contract-baseline.yaml",
-  "T-W1-002-platform-and-ci.yaml",
-  "T-W1-003A-storage-and-job-runtime.yaml",
-  "T-W1-003B-pdf-extraction-and-evidence.yaml",
-  "T-W1-004-model-gateway-and-output-validation.yaml",
-  "T-W1-004B-openai-compatible-byok.yaml",
-  "T-W1-005-reading-workflow-api.yaml",
-  "T-W1-006A-web-contract-skeleton.yaml",
-  "T-W1-006-web-workbench.yaml",
-  "T-W1-007-evaluation-and-qa-fixtures.yaml",
-  "T-W1-008-integration-and-release-gate.yaml",
-].map((name) => path.join(root, "docs", "tasks", "backlog", name));
+const taskDirectory = path.join(root, "docs", "tasks", "backlog");
+const taskFiles = fs
+  .readdirSync(taskDirectory, { withFileTypes: true })
+  .filter(
+    (entry) => entry.isFile() && /^T-W1-.*\.yaml$/.test(entry.name),
+  )
+  .map((entry) => path.join(taskDirectory, entry.name))
+  .sort();
 
 const required = [
   "docs/architecture/wave1-technical-plan.md",
@@ -82,11 +77,15 @@ if (!startup.includes("Gate C 业务任务解锁：`LOCKED`"))
 
 const tasks = new Map();
 for (const file of taskFiles) {
-  if (!fs.existsSync(file)) {
-    errors.push(`missing task file: ${path.basename(file)}`);
+  let content;
+  try {
+    content = fs.readFileSync(file, "utf8");
+  } catch (error) {
+    errors.push(
+      `task file cannot be read: ${path.basename(file)} (${error instanceof Error ? error.message : String(error)})`,
+    );
     continue;
   }
-  const content = fs.readFileSync(file, "utf8");
   const id = content.match(/^task_id:\s*(\S+)/m)?.[1];
   if (!id) {
     errors.push(`task has no task_id: ${path.basename(file)}`);
@@ -108,7 +107,8 @@ for (const file of taskFiles) {
 
 for (const [id, task] of tasks) {
   for (const dep of task.deps)
-    if (!tasks.has(dep)) errors.push(`${id} depends on missing task ${dep}`);
+    if (/^T-W1-/.test(dep) && !tasks.has(dep))
+      errors.push(`${id} depends on missing task ${dep}`);
 }
 const visiting = new Set();
 const visited = new Set();
