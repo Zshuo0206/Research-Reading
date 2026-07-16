@@ -1,7 +1,7 @@
 task_id: T-W1-010
 title: "归档 V1.0 产品定义并更新开发需求基线"
 owner_role: orchestrator
-status: REVIEW
+status: INTEGRATED
 wave: 1
 
 objective: "将已确认的 V1.0 产品定义归档到版本目录，形成面向契约、工作流、Web 和 QA 的开发需求基线，并记录公共契约演进提案。"
