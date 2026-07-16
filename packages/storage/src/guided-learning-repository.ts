@@ -40,6 +40,11 @@ export interface GuidedLearningCommandWrite {
   created_at: string;
 }
 
+export interface GuidedLearningSaveOptions {
+  command?: GuidedLearningCommandWrite;
+  supersedeActiveFailuresAt?: string;
+}
+
 export class GuidedLearningStorageError extends Error {
   constructor(
     readonly code:
@@ -100,11 +105,11 @@ export class GuidedLearningSessionRepository {
   save(
     session: GuidedLearningSession,
     expectedRevision: number,
-    command?: GuidedLearningCommandWrite,
+    options: GuidedLearningSaveOptions = {},
   ): void {
     this.transaction(() => {
-      if (command) {
-        const prior = this.findCommand(command.idempotency_key);
+      if (options.command) {
+        const prior = this.findCommand(options.command.idempotency_key);
         if (prior)
           throw new GuidedLearningStorageError(
             "IDEMPOTENCY_CONFLICT",
@@ -136,7 +141,7 @@ export class GuidedLearningSessionRepository {
           `Session ${session.session_id} revision changed`,
         );
       this.replaceProjection(session);
-      if (command)
+      if (options.command)
         this.database
           .prepare(
             `INSERT INTO guided_learning_commands
@@ -145,17 +150,23 @@ export class GuidedLearningSessionRepository {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
-            command.idempotency_key,
-            command.session_id,
-            command.event,
-            command.request_fingerprint,
-            command.from_state,
-            command.to_state,
-            command.actor,
-            command.result_revision,
-            JSON.stringify(command.result),
-            command.created_at,
+            options.command.idempotency_key,
+            options.command.session_id,
+            options.command.event,
+            options.command.request_fingerprint,
+            options.command.from_state,
+            options.command.to_state,
+            options.command.actor,
+            options.command.result_revision,
+            JSON.stringify(options.command.result),
+            options.command.created_at,
           );
+      if (options.supersedeActiveFailuresAt !== undefined)
+        this.database
+          .prepare(
+            "UPDATE guided_learning_failures SET superseded_at = ? WHERE session_id = ? AND superseded_at IS NULL",
+          )
+          .run(options.supersedeActiveFailuresAt, session.session_id);
     });
   }
 
@@ -277,14 +288,6 @@ export class GuidedLearningSessionRepository {
         input.retryable ? 1 : 0,
         input.failedAt,
       );
-  }
-
-  clearFailures(sessionId: string, supersededAt: string): void {
-    this.database
-      .prepare(
-        "UPDATE guided_learning_failures SET superseded_at = ? WHERE session_id = ? AND superseded_at IS NULL",
-      )
-      .run(supersededAt, sessionId);
   }
 
   listFailures(sessionId: string): GuidedLearningFailureRecord[] {

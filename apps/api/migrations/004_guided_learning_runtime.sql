@@ -49,11 +49,11 @@ CREATE TABLE guided_learning_feedback (
 );
 
 CREATE TABLE guided_learning_evidence (
-  evidence_id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL REFERENCES guided_learning_sessions(session_id) ON DELETE CASCADE,
+  evidence_id TEXT NOT NULL,
   question_id TEXT NOT NULL,
   evidence_json TEXT NOT NULL,
-  UNIQUE (session_id, question_id, evidence_id),
+  PRIMARY KEY (session_id, evidence_id),
   FOREIGN KEY (session_id, question_id)
     REFERENCES guided_learning_questions(session_id, question_id) ON DELETE CASCADE
 );

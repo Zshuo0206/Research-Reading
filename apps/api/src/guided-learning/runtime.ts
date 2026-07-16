@@ -282,19 +282,21 @@ export class GuidedLearningRuntime {
     try {
       this.assertConsistent(next);
       this.repository.save(next, session.session_revision, {
-        idempotency_key: input.idempotency_key,
-        session_id: session.session_id,
-        event,
-        request_fingerprint: fingerprint,
-        from_state: transition.from_state,
-        to_state: transition.to_state,
-        actor: transition.actor,
-        result_revision: transition.result_revision,
-        result,
-        created_at: next.updated_at,
+        command: {
+          idempotency_key: input.idempotency_key,
+          session_id: session.session_id,
+          event,
+          request_fingerprint: fingerprint,
+          from_state: transition.from_state,
+          to_state: transition.to_state,
+          actor: transition.actor,
+          result_revision: transition.result_revision,
+          result,
+          created_at: next.updated_at,
+        },
+        supersedeActiveFailuresAt:
+          event === "RETRY" ? next.updated_at : undefined,
       });
-      if (event === "RETRY")
-        this.repository.clearFailures(session.session_id, next.updated_at);
     } catch (error) {
       if (
         error instanceof GuidedLearningStorageError &&

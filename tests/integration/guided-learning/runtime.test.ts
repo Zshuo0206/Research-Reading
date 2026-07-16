@@ -7,7 +7,11 @@ import { describe, expect, it } from "vitest";
 const makeRuntime = () => createApiRuntime(":memory:");
 const makeFeedback = (
   documentVersionId: string,
-  status: "VERIFIED" | "PENDING" = "VERIFIED",
+  status:
+    | "VERIFIED"
+    | "PENDING"
+    | "INVALID"
+    | "INSUFFICIENT_EVIDENCE" = "VERIFIED",
 ) => ({
   feedback: { summary: "回答抓住了方法核心。", omissions: [] },
   reference_answer: {
@@ -35,6 +39,61 @@ const makeFeedback = (
     },
   ],
 });
+
+function prepareAnsweredSession(
+  rt: ReturnType<typeof makeRuntime>,
+  questionPrefix = "question_mock",
+) {
+  const created = rt.guidedLearningRuntime.createSession({
+    project_id: "proj_test",
+    document_version_id: "docv_test",
+    learning_goal: "理解方法",
+  });
+  const directions = rt.guidedLearningRuntime.generateDirections(
+    created.session_id,
+  );
+  const command = (event: string, payload: unknown, idempotency_key: string) =>
+    rt.guidedLearningRuntime.executeCommand({
+      session_id: created.session_id,
+      contract_version: "guided-learning.v1",
+      event,
+      payload,
+      idempotency_key,
+    });
+  command(
+    "SELECT_DIRECTION",
+    { direction_id: directions.candidate_directions[0]?.direction_id },
+    `${created.session_id}-select`,
+  );
+  command(
+    "START_STAGE",
+    { stage_id: "UNDERSTAND" },
+    `${created.session_id}-start`,
+  );
+  rt.guidedLearningRuntime.writeQuestions(
+    created.session_id,
+    [1, 2, 3].map((order) => ({
+      question_id: `${questionPrefix}_${order}`,
+      order,
+      stage_id: "UNDERSTAND",
+      prompt: `问题 ${order}`,
+      status: "UNSEEN",
+      confirmation_status: "PENDING",
+    })),
+  );
+  const question = rt.guidedLearningRuntime.getSession(created.session_id)
+    .questions?.[0];
+  command(
+    "SUBMIT_ANSWER",
+    {
+      question_id: question?.question_id,
+      question_order: question?.order,
+      answer: "我的回答",
+    },
+    `${created.session_id}-answer`,
+  );
+  return { sessionId: created.session_id, question, command };
+}
 
 describe("guided learning runtime", () => {
   it("runs migration and persists a session projection", () => {
@@ -213,7 +272,222 @@ describe("guided learning runtime", () => {
     });
     expect(result.session.state).toBe("CREATED");
     expect(result.session.failure).toBeUndefined();
+    expect(
+      rt.database
+        .prepare(
+          "SELECT result_revision FROM guided_learning_commands WHERE idempotency_key = ?",
+        )
+        .get("idem-retry"),
+    ).toEqual({ result_revision: result.session.session_revision });
+    expect(
+      rt.database
+        .prepare(
+          "SELECT superseded_at FROM guided_learning_failures WHERE session_id = ?",
+        )
+        .get(session.session_id),
+    ).not.toEqual({ superseded_at: null });
+    const replay = rt.guidedLearningRuntime.executeCommand({
+      session_id: session.session_id,
+      contract_version: "guided-learning.v1",
+      event: "RETRY",
+      payload: {},
+      idempotency_key: "idem-retry",
+    });
+    expect(replay.session.session_revision).toBe(
+      result.session.session_revision,
+    );
     rt.database.close();
+  });
+
+  it("atomically supersedes failures with RETRY and rolls back on supersede failure", () => {
+    const rt = makeRuntime();
+    const session = rt.guidedLearningRuntime.createSession({
+      project_id: "proj_atomic",
+      document_version_id: "docv_atomic",
+      learning_goal: "理解方法",
+    });
+    rt.guidedLearningRuntime.recordFailure({
+      session_id: session.session_id,
+      failed_operation: "GENERATE_DIRECTIONS",
+      error_code: "TEMPORARY_UNAVAILABLE",
+      message: "mock unavailable",
+      retryable: true,
+    });
+    const before = rt.guidedLearningRuntime.getSession(session.session_id);
+    rt.database.exec(
+      `CREATE TRIGGER reject_guided_failure_supersede
+       BEFORE UPDATE OF superseded_at ON guided_learning_failures
+       BEGIN SELECT RAISE(ABORT, 'supersede blocked'); END`,
+    );
+    expect(() =>
+      rt.guidedLearningRuntime.executeCommand({
+        session_id: session.session_id,
+        contract_version: "guided-learning.v1",
+        event: "RETRY",
+        payload: {},
+        idempotency_key: "idem-atomic-retry",
+      }),
+    ).toThrow();
+    const after = rt.guidedLearningRuntime.getSession(session.session_id);
+    expect(after).toMatchObject({
+      state: before.state,
+      session_revision: before.session_revision,
+    });
+    expect(
+      rt.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM guided_learning_commands WHERE idempotency_key = ?",
+        )
+        .get("idem-atomic-retry"),
+    ).toEqual({ count: 0 });
+    expect(
+      rt.database
+        .prepare(
+          "SELECT superseded_at FROM guided_learning_failures WHERE session_id = ?",
+        )
+        .get(session.session_id),
+    ).toEqual({ superseded_at: null });
+    rt.database.close();
+  });
+
+  it("scopes Evidence IDs to a Session and preserves other Session projections", () => {
+    const rt = makeRuntime();
+    const first = prepareAnsweredSession(rt, "question_first");
+    rt.guidedLearningRuntime.writeFeedback({
+      session_id: first.sessionId,
+      ...makeFeedback("docv_test"),
+    });
+    const firstSession = rt.guidedLearningRuntime.getSession(first.sessionId);
+    expect(() =>
+      first.command(
+        "CONFIRM_QUESTION",
+        {
+          question_id: first.question?.question_id,
+          question_order: first.question?.order,
+        },
+        `${first.sessionId}-confirm`,
+      ),
+    ).not.toThrow();
+    first.command(
+      "ADVANCE_QUESTION",
+      {
+        question_id: first.question?.question_id,
+        question_order: first.question?.order,
+      },
+      `${first.sessionId}-advance`,
+    );
+    const nextQuestion = rt.guidedLearningRuntime.getSession(first.sessionId)
+      .questions?.[1];
+    first.command(
+      "SUBMIT_ANSWER",
+      {
+        question_id: nextQuestion?.question_id,
+        question_order: nextQuestion?.order,
+        answer: "第二个回答",
+      },
+      `${first.sessionId}-answer-2`,
+    );
+    expect(() =>
+      rt.guidedLearningRuntime.writeFeedback({
+        session_id: first.sessionId,
+        ...makeFeedback("docv_test"),
+      }),
+    ).toThrowError(/DUPLICATE_EVIDENCE_ID/);
+
+    const second = prepareAnsweredSession(rt, "question_second");
+    rt.guidedLearningRuntime.writeFeedback({
+      session_id: second.sessionId,
+      ...makeFeedback("docv_test"),
+    });
+    const rows = rt.database
+      .prepare(
+        "SELECT session_id, evidence_id, question_id FROM guided_learning_evidence ORDER BY session_id",
+      )
+      .all();
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        {
+          session_id: firstSession.session_id,
+          evidence_id: "evidence_test_1",
+          question_id: first.question?.question_id,
+        },
+        {
+          session_id: second.sessionId,
+          evidence_id: "evidence_test_1",
+          question_id: second.question?.question_id,
+        },
+      ]),
+    );
+    expect(() =>
+      rt.database
+        .prepare(
+          "INSERT INTO guided_learning_evidence(session_id, evidence_id, question_id, evidence_json) VALUES (?, ?, ?, ?)",
+        )
+        .run(
+          second.sessionId,
+          "evidence_cross_session_question",
+          first.question?.question_id ?? "question_missing",
+          "{}",
+        ),
+    ).toThrow();
+    rt.database.close();
+  });
+
+  it("rejects non-verified or mismatched Evidence and permits a citation-free insufficient claim", () => {
+    for (const status of [
+      "PENDING",
+      "INVALID",
+      "INSUFFICIENT_EVIDENCE",
+    ] as const) {
+      const rt = makeRuntime();
+      const prepared = prepareAnsweredSession(rt);
+      expect(() =>
+        rt.guidedLearningRuntime.writeFeedback({
+          session_id: prepared.sessionId,
+          ...makeFeedback("docv_test", status),
+        }),
+      ).toThrowError(/EVIDENCE_NOT_VERIFIED/);
+      rt.database.close();
+    }
+
+    const mismatchRuntime = makeRuntime();
+    const mismatch = prepareAnsweredSession(mismatchRuntime);
+    expect(() =>
+      mismatchRuntime.guidedLearningRuntime.writeFeedback({
+        session_id: mismatch.sessionId,
+        ...makeFeedback("docv_other"),
+      }),
+    ).toThrowError(/EVIDENCE_DOCUMENT_MISMATCH/);
+    mismatchRuntime.database.close();
+
+    const insufficientRuntime = makeRuntime();
+    const insufficient = prepareAnsweredSession(insufficientRuntime);
+    const noCitation = makeFeedback("docv_test") as {
+      feedback: Record<string, unknown>;
+      reference_answer: { claims: Array<Record<string, unknown>> };
+      evidence: Record<string, unknown>[];
+    };
+    noCitation.reference_answer.claims[0] = {
+      text: "证据不足，无法支持该主张。",
+      claim_type: "INSUFFICIENT_EVIDENCE",
+      evidence_refs: [],
+    };
+    insufficientRuntime.guidedLearningRuntime.writeFeedback({
+      session_id: insufficient.sessionId,
+      ...noCitation,
+    });
+    expect(
+      insufficient.command(
+        "CONFIRM_QUESTION",
+        {
+          question_id: insufficient.question?.question_id,
+          question_order: insufficient.question?.order,
+        },
+        "insufficient-confirm",
+      ).session.state,
+    ).toBe("QUESTION_COMPLETED");
+    insufficientRuntime.database.close();
   });
 
   it("serves create, get and command HTTP routes", async () => {
