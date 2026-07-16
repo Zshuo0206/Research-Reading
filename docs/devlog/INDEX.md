@@ -7,6 +7,7 @@
 | 2026-07-12 | Wave 1 | 第一批最终契约/平台整改 | REPAIR PENDING REVIEW — Gate C LOCKED |
 | 2026-07-13 | Wave 1 | V1.0 产品定义与开发需求更新 | DOCUMENTED — RFC-W1-002 PROPOSED |
 | 2026-07-15 | Wave 1 | 真实 PDF、V1.0 对齐与 guided-learning.v1 契约 | CONTRACT INTEGRATED — runtime implementation pending |
+| 2026-07-16 | Wave 1 | Guided Learning Worker Generation Jobs | IMPLEMENTED — T-W1-014，Web/BYOK 人工验收待后续任务 |
 
 详细日志：`docs/devlog/2026-07-11.md`、`docs/devlog/2026-07-12.md`、
-`docs/devlog/2026-07-13.md`、`docs/devlog/2026-07-15.md`
+`docs/devlog/2026-07-13.md`、`docs/devlog/2026-07-15.md`、`docs/devlog/2026-07-16.md`

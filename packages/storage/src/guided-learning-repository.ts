@@ -6,6 +6,7 @@ import type {
   GuidedLearningState,
   GuidedLearningTransitionActor,
 } from "../../contracts/dist/wave1/src/index.js";
+import type { GuidedLearningGenerationJobPayload } from "./types.js";
 
 type Row = Record<string, unknown>;
 
@@ -43,6 +44,16 @@ export interface GuidedLearningCommandWrite {
 export interface GuidedLearningSaveOptions {
   command?: GuidedLearningCommandWrite;
   supersedeActiveFailuresAt?: string;
+  job?: GuidedLearningJobWrite;
+}
+
+export interface GuidedLearningJobWrite {
+  job_id: string;
+  kind: GuidedLearningGenerationJobPayload["operation"];
+  payload: GuidedLearningGenerationJobPayload;
+  idempotency_key: string;
+  max_attempts?: number;
+  created_at: string;
 }
 
 export class GuidedLearningStorageError extends Error {
@@ -63,7 +74,7 @@ export class GuidedLearningStorageError extends Error {
 export class GuidedLearningSessionRepository {
   constructor(private readonly database: DatabaseSync) {}
 
-  create(session: GuidedLearningSession): void {
+  create(session: GuidedLearningSession, job?: GuidedLearningJobWrite): void {
     this.transaction(() => {
       this.database
         .prepare(
@@ -89,6 +100,7 @@ export class GuidedLearningSessionRepository {
           session.updated_at,
         );
       this.replaceProjection(session);
+      if (job) this.insertJob(job);
     });
   }
 
@@ -167,6 +179,7 @@ export class GuidedLearningSessionRepository {
             "UPDATE guided_learning_failures SET superseded_at = ? WHERE session_id = ? AND superseded_at IS NULL",
           )
           .run(options.supersedeActiveFailuresAt, session.session_id);
+      if (options.job) this.insertJob(options.job);
     });
   }
 
@@ -365,6 +378,24 @@ export class GuidedLearningSessionRepository {
           JSON.stringify(item),
         );
     }
+  }
+
+  private insertJob(job: GuidedLearningJobWrite): void {
+    this.database
+      .prepare(
+        `INSERT INTO jobs
+         (job_id, kind, state, payload_json, idempotency_key, attempt,
+          max_attempts, created_at)
+         VALUES (?, ?, 'QUEUED', ?, ?, 0, ?, ?)`,
+      )
+      .run(
+        job.job_id,
+        job.kind,
+        JSON.stringify(job.payload),
+        job.idempotency_key,
+        job.max_attempts ?? 3,
+        job.created_at,
+      );
   }
 
   private transaction(operation: () => void): void {

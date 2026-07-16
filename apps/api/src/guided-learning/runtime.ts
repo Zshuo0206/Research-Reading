@@ -13,6 +13,9 @@ import type {
   GuidedLearningState,
 } from "../../../../packages/contracts/dist/wave1/src/index.js";
 import {
+  type GuidedLearningGenerationJobPayload,
+  type GuidedLearningJobKind,
+  type GuidedLearningJobWrite,
   type GuidedLearningSessionRepository,
   GuidedLearningStorageError,
 } from "../../../../packages/storage/dist/index.js";
@@ -28,6 +31,7 @@ type CommandResult = {
     result_revision: number;
   };
   session: GuidedLearningSession;
+  job_id?: string;
 };
 
 export class GuidedLearningRuntimeError extends Error {
@@ -60,32 +64,24 @@ export class GuidedLearningRuntime {
     document_version_id: string;
     learning_goal: string;
   }): GuidedLearningSession {
-    if (
-      !input.project_id ||
-      !input.document_version_id ||
-      !input.learning_goal?.trim()
-    )
-      throw new GuidedLearningRuntimeError(
-        "VALIDATION_FAILED",
-        "project_id, document_version_id and learning_goal are required",
-      );
-    const timestamp = this.now();
-    const session = {
-      session_id: `learning_${randomUUID()}`,
-      project_id: input.project_id,
-      document_version_id: input.document_version_id,
-      mode: "GUIDED_LEARNING",
-      learning_goal: input.learning_goal.trim(),
-      state: "CREATED",
-      session_revision: 1,
-      state_version: 1,
-      candidate_directions: [],
-      created_at: timestamp,
-      updated_at: timestamp,
-    } as unknown as GuidedLearningSession;
-    this.assertConsistent(session);
+    const session = this.newSession(input);
     this.repository.create(session);
     return session;
+  }
+
+  requestDirectionsGeneration(input: {
+    project_id: string;
+    document_version_id: string;
+    learning_goal: string;
+  }): { session: GuidedLearningSession; job_id: string } {
+    const session = this.newSession(input);
+    const job = this.generationJob(
+      session,
+      "GUIDED_LEARNING_DIRECTION_GENERATION",
+      "CREATED",
+    );
+    this.repository.create(session, job);
+    return { session, job_id: job.job_id };
   }
 
   getSession(sessionId: string): GuidedLearningSession {
@@ -274,10 +270,12 @@ export class GuidedLearningRuntime {
     });
     if (transition.outcome === "REJECTED")
       this.rejectTransition(transition.reason);
+    const job = this.jobForCommand(session, next, event);
     const result: CommandResult = {
       outcome: "APPLIED",
       transition,
       session: next,
+      job_id: job?.job_id,
     };
     try {
       this.assertConsistent(next);
@@ -296,6 +294,7 @@ export class GuidedLearningRuntime {
         },
         supersedeActiveFailuresAt:
           event === "RETRY" ? next.updated_at : undefined,
+        job,
       });
     } catch (error) {
       if (
@@ -312,6 +311,107 @@ export class GuidedLearningRuntime {
       throw mapStorageError(error);
     }
     return result;
+  }
+
+  private newSession(input: {
+    project_id: string;
+    document_version_id: string;
+    learning_goal: string;
+  }): GuidedLearningSession {
+    if (
+      !input.project_id ||
+      !input.document_version_id ||
+      !input.learning_goal?.trim()
+    )
+      throw new GuidedLearningRuntimeError(
+        "VALIDATION_FAILED",
+        "project_id, document_version_id and learning_goal are required",
+      );
+    const timestamp = this.now();
+    const session = {
+      session_id: `learning_${randomUUID()}`,
+      project_id: input.project_id,
+      document_version_id: input.document_version_id,
+      mode: "GUIDED_LEARNING",
+      learning_goal: input.learning_goal.trim(),
+      state: "CREATED",
+      session_revision: 1,
+      state_version: 1,
+      candidate_directions: [],
+      created_at: timestamp,
+      updated_at: timestamp,
+    } as unknown as GuidedLearningSession;
+    this.assertConsistent(session);
+    return session;
+  }
+
+  private jobForCommand(
+    previous: GuidedLearningSession,
+    next: GuidedLearningSession,
+    event: GuidedLearningCommandName,
+  ): GuidedLearningJobWrite | undefined {
+    if (event === "START_STAGE")
+      return this.generationJob(
+        next,
+        "GUIDED_LEARNING_QUESTION_GENERATION",
+        "QUESTIONS_GENERATING",
+      );
+    if (event === "SUBMIT_ANSWER")
+      return this.generationJob(
+        next,
+        "GUIDED_LEARNING_FEEDBACK_GENERATION",
+        "ANSWER_SUBMITTED",
+        this.currentQuestion(next),
+      );
+    if (event === "ADVANCE_QUESTION" && !hasRemaining(previous))
+      return this.generationJob(
+        next,
+        "GUIDED_LEARNING_STAGE_SUMMARY_GENERATION",
+        "SUMMARY_GENERATING",
+      );
+    if (event === "RETRY" && previous.failure) {
+      const operation = operationToJobKind(previous.failure.failed_operation);
+      return this.generationJob(
+        next,
+        operation,
+        next.state as GuidedLearningGenerationJobPayload["expected_state"],
+      );
+    }
+    return undefined;
+  }
+
+  private generationJob(
+    session: GuidedLearningSession,
+    operation: GuidedLearningJobKind,
+    expectedState: GuidedLearningGenerationJobPayload["expected_state"],
+    question?: Value,
+  ): GuidedLearningJobWrite {
+    const jobId = `job_${randomUUID()}`;
+    const payload: GuidedLearningGenerationJobPayload = {
+      schema_version: GUIDED_LEARNING_CONTRACT_VERSION,
+      operation,
+      session_id: session.session_id,
+      project_id: session.project_id,
+      document_version_id: session.document_version_id,
+      learning_goal: session.learning_goal,
+      expected_revision: session.session_revision,
+      expected_state: expectedState,
+      provider_config: { provider: "MOCK", fixture_id: "guided-learning-v1" },
+    };
+    if (typeof session.selected_direction_id === "string")
+      payload.selected_direction_id = session.selected_direction_id;
+    if (question) {
+      payload.question_id = String(question.question_id);
+      payload.question_order = Number(question.order);
+    }
+    return {
+      job_id: jobId,
+      kind: operation,
+      payload,
+      idempotency_key: `guided-learning:${session.session_id}:${operation}:${session.session_revision}`,
+      max_attempts: 3,
+      created_at: session.updated_at,
+    };
   }
 
   private applyClientCommand(
@@ -670,6 +770,21 @@ function isFailureShape(
     (operation === "GENERATE_STAGE_SUMMARY" &&
       (state === "QUESTION_COMPLETED" || state === "SUMMARY_GENERATING"))
   );
+}
+
+function operationToJobKind(
+  operation: GuidedLearningFailure["failed_operation"],
+): GuidedLearningJobKind {
+  switch (operation) {
+    case "GENERATE_DIRECTIONS":
+      return "GUIDED_LEARNING_DIRECTION_GENERATION";
+    case "GENERATE_QUESTIONS":
+      return "GUIDED_LEARNING_QUESTION_GENERATION";
+    case "GENERATE_FEEDBACK":
+      return "GUIDED_LEARNING_FEEDBACK_GENERATION";
+    case "GENERATE_STAGE_SUMMARY":
+      return "GUIDED_LEARNING_STAGE_SUMMARY_GENERATION";
+  }
 }
 function mapStorageError(error: unknown): GuidedLearningRuntimeError {
   if (error instanceof GuidedLearningRuntimeError) return error;

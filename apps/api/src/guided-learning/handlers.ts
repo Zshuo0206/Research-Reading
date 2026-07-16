@@ -9,8 +9,7 @@ export class GuidedLearningApiHandlers {
     document_version_id: string;
     learning_goal: string;
   }) {
-    const session = this.runtime.createSession(input);
-    return this.runtime.generateDirections(session.session_id);
+    return this.runtime.requestDirectionsGeneration(input);
   }
 
   get(sessionId: string) {

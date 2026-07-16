@@ -9,7 +9,13 @@ import type {
   QuestionPlanJobPayload,
 } from "./types.js";
 
-type JobKind = "QUESTION_PLAN" | "ANSWER_GENERATION";
+type JobKind =
+  | "QUESTION_PLAN"
+  | "ANSWER_GENERATION"
+  | "GUIDED_LEARNING_DIRECTION_GENERATION"
+  | "GUIDED_LEARNING_QUESTION_GENERATION"
+  | "GUIDED_LEARNING_FEEDBACK_GENERATION"
+  | "GUIDED_LEARNING_STAGE_SUMMARY_GENERATION";
 type ReviewStatus = "DRAFT" | "CONFIRMED" | "REJECTED";
 type VerificationStatus =
   | "PENDING"

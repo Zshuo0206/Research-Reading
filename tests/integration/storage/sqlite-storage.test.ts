@@ -35,7 +35,20 @@ describe("SQLite storage", () => {
     });
     expect(
       database.prepare("SELECT version FROM schema_migrations").all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    ).toEqual([
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+      { version: 5 },
+    ]);
+    expect(
+      database
+        .prepare("SELECT sql FROM sqlite_master WHERE name = 'jobs'")
+        .get(),
+    ).toMatchObject({
+      sql: expect.stringContaining("GUIDED_LEARNING_DIRECTION_GENERATION"),
+    });
     database.close();
   });
 

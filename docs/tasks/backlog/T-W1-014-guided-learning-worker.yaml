@@ -1,0 +1,83 @@
+task_id: T-W1-014
+title: "实现 Guided Learning Worker Generation Jobs"
+owner_role: worker-agent
+status: REVIEW
+wave: 1
+
+objective: "把 guided-learning.v1 的方向、问题、点评和阶段总结生成接入现有 Job/Worker runtime，并完成可恢复的 Mock 后端闭环。"
+background: "T-W1-013 已将 Guided Learning Session/Command、SQLite projection、状态机和 Evidence 确认边界集成到 main；本任务补充正式异步生成路径，不实现 Web。"
+scope:
+  - "增加四类 Guided Learning Job operation、版本化 payload 和连续 migration。"
+  - "在 Session/Command 持久化事务中原子创建生成 Job。"
+  - "实现 Worker 的方向、问题、点评/Evidence 和阶段总结 handler。"
+  - "使用现有 ModelGateway 和确定性 Mock，Evidence 从 canonical page text 物化并验证。"
+  - "覆盖 revision、状态、幂等、失败恢复和真实 PDF fixture 闭环。"
+out_of_scope:
+  - "Web UI、OCR、真实模型联网验收、ANALYZE、TRANSFER 和产品层人工验收。"
+  - "修改 guided-learning.v1 公共 Schema、数据库替换、第二套队列或大规模重构。"
+dependencies:
+  - task_id: T-W1-011
+    reason: "Worker 必须消费已审查的 guided-learning.v1 状态机和 Evidence 边界。"
+  - task_id: T-W1-003A
+    reason: "复用现有 SQLite storage 和 Job runtime。"
+  - task_id: T-W1-003B
+    reason: "Evidence 必须读取 READY document version 的 canonical page text。"
+  - task_id: T-W1-004A
+    reason: "复用现有 ModelGateway 抽象和 Mock。"
+
+writable_paths:
+  - apps/api/migrations/005_guided_learning_worker_jobs.sql
+  - apps/api/src/guided-learning/**
+  - apps/api/src/workflow/service.ts
+  - apps/worker/src/runtime.ts
+  - apps/worker/src/runtime/job-runtime.ts
+  - apps/worker/src/workflow/guided-learning.ts
+  - packages/storage/src/**
+  - tests/integration/guided-learning/worker.test.ts
+  - package.json
+  - docs/tasks/backlog/T-W1-014-guided-learning-worker.yaml
+  - docs/CURRENT_STATE.md
+  - docs/devlog/**
+read_only_paths:
+  - packages/contracts/wave1/**
+  - packages/model-gateway/**
+  - apps/web/**
+  - tests/contracts/**
+forbidden_paths:
+  - packages/contracts/**
+  - apps/web/**
+  - tests/fixtures/pdf/synthetic-text.pdf
+contract_version: "guided-learning.v1 + model-gateway.v1"
+
+inputs:
+  - name: "Guided Learning generation Job payload"
+    type: "versioned-job-payload"
+    source: "GuidedLearningRuntime and SQLite jobs"
+outputs:
+  - name: "Validated Guided Learning session snapshot"
+    type: "guided-learning.v1-session"
+    destination: "SQLite session/projection tables"
+
+acceptance_criteria:
+  - "四类 Job 能被注册、校验、执行并在正确 revision/state 边界内完成。"
+  - "Job 与创建/命令状态更新在同一 SQLite transaction 中入队。"
+  - "Worker 重试或重复执行不会覆盖新 revision 或重复生成结果。"
+  - "模型失败记录 retryable Guided Learning failure，RETRY 后可恢复。"
+  - "点评 Evidence 来自真实 canonical page text，坐标、quote、page hash 和 document version 可验证。"
+required_tests:
+  - "四类 handler 注册、非法 payload、缺失 Session、状态/revision 冲突测试。"
+  - "真实 synthetic-text.pdf 的 Session → Job → Worker → Evidence → Summary 闭环测试。"
+  - "失败记录、RETRY 恢复、命令幂等和重载持久化测试。"
+manual_acceptance:
+  - "未执行真实 BYOK 人工验收；由后续产品/QA 任务独立验收。"
+security_considerations:
+  - "Job payload 不包含 API Key、secret、原始 PDF 二进制或内部绝对路径。"
+  - "Worker 只通过状态/revision/consistency 校验后的 repository 方法写入 Session。"
+risks:
+  - risk: "Mock 生成结果与真实模型输出能力不同。"
+    mitigation: "保持确定性 Mock，并将 BYOK 作为未执行的后续人工验收边界。"
+rollback_plan: "停用四类 Guided Learning Job 入队入口；保留现有快速问答 Job 和已发布 migration 的前向兼容。"
+deliverables:
+  - "四类 Guided Learning Worker operation 和 Job 编排。"
+  - "原子入队 migration/storage 支持。"
+  - "真实 PDF Mock 闭环和失败重试测试。"

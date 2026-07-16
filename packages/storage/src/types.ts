@@ -1,4 +1,13 @@
-export type JobKind = "DOCUMENT_IMPORT" | "QUESTION_PLAN" | "ANSWER_GENERATION";
+export type GuidedLearningJobKind =
+  | "GUIDED_LEARNING_DIRECTION_GENERATION"
+  | "GUIDED_LEARNING_QUESTION_GENERATION"
+  | "GUIDED_LEARNING_FEEDBACK_GENERATION"
+  | "GUIDED_LEARNING_STAGE_SUMMARY_GENERATION";
+export type JobKind =
+  | "DOCUMENT_IMPORT"
+  | "QUESTION_PLAN"
+  | "ANSWER_GENERATION"
+  | GuidedLearningJobKind;
 export type JobState = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
 export type ReviewStatus = "DRAFT" | "CONFIRMED" | "REJECTED";
 export type VerificationStatus =
@@ -30,6 +39,27 @@ export interface CreateJobInput<TPayload = unknown> {
   idempotencyKey: string;
   maxAttempts?: number;
   createdAt?: string;
+}
+
+export interface GuidedLearningGenerationJobPayload {
+  schema_version: "guided-learning.v1";
+  operation: GuidedLearningJobKind;
+  session_id: string;
+  project_id: string;
+  document_version_id: string;
+  learning_goal: string;
+  expected_revision: number;
+  expected_state:
+    | "CREATED"
+    | "ROUTE_LOCKED"
+    | "QUESTIONS_GENERATING"
+    | "ANSWER_SUBMITTED"
+    | "QUESTION_COMPLETED"
+    | "SUMMARY_GENERATING";
+  provider_config: Record<string, unknown>;
+  selected_direction_id?: string;
+  question_id?: string;
+  question_order?: number;
 }
 
 export interface DocumentPageRecord {
