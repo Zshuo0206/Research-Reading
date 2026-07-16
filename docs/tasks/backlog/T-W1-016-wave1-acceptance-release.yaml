@@ -1,0 +1,87 @@
+id: T-W1-016
+task_id: T-W1-016
+title: "Wave 1 Guided Learning 验收与发布收口"
+owner_role: qa-evaluation-agent
+status: REVIEW
+wave: 1
+
+objective: "从全新 SQLite 数据库独立验收 Wave 1 Guided Learning Mock 闭环、恢复、安全边界和发布文档，并只修复验收发现的阻断性或高严重度缺陷。"
+background: "T-W1-015 已将 Guided Learning Web Workbench 集成 main；本任务负责 Wave 1 的可复现验收证据、运行手册、发布判定和人工验收边界。"
+scope:
+  - "全新数据库执行 migration 001–005，并核验 schema、Job kind、外键、索引和重复启动。"
+  - "使用登记的 synthetic-text.pdf 验收 Mock Guided Learning 全链路、Evidence、失败/RETRY、EDIT_ANSWER 和 Session 刷新恢复。"
+  - "验收 API/Worker 重启恢复、快速问答回归、loopback/CORS、本地 secret 边界和 BYOK 自动检查。"
+  - "生成 Wave 1 验收报告和可复制的本地运行手册。"
+out_of_scope:
+  - "新增产品能力、公共契约、数据库 migration、真实模型接入、OCR、第二/第三阶段、远程部署或 UI 重构。"
+  - "伪造真实 BYOK 凭据、人工产品验收或联网结果。"
+  - "批量格式化全仓、修改 PDF fixture 或修改既有任务 ID。"
+dependencies:
+  - task_id: T-W1-015
+    reason: "验收依赖已集成的 Guided Learning Web、API、Worker、Session/Job 和 Evidence 闭环。"
+
+writable_paths:
+  - docs/tasks/backlog/T-W1-016-wave1-acceptance-release.yaml
+  - docs/acceptance/wave1-guided-learning-acceptance.md
+  - docs/operations/wave1-local-runbook.md
+  - docs/CURRENT_STATE.md
+  - docs/devlog/2026-07-16.md
+  - docs/devlog/INDEX.md
+  - README.md
+  - packages/model-gateway/src/openai-compatible.ts
+read_only_paths:
+  - packages/contracts/**
+  - apps/api/migrations/**
+  - tests/fixtures/pdf/**
+forbidden_paths:
+  - packages/contracts/**
+  - apps/api/migrations/**
+  - tests/fixtures/pdf/**/*.pdf
+  - apps/web/src/**
+contract_version: "guided-learning.v1 + model-gateway.v1 + api.v1"
+
+inputs:
+  - name: "全新本地 SQLite 数据库、登记的合成 PDF 和 Mock Gateway"
+    type: "acceptance-fixtures"
+    source: "tests/fixtures/pdf/synthetic-text.pdf and repository runtime"
+outputs:
+  - name: "Wave 1 验收证据、运行手册和发布判定"
+    type: "acceptance-release-record"
+    destination: "docs/acceptance and docs/operations"
+
+acceptance_criteria:
+  - "空数据库可按 001–005 顺序迁移，schema version 为 5，既有和四类 Guided Learning Job kind、外键、索引均保留。"
+  - "真实 synthetic-text.pdf 的 Mock Guided Learning 全链路、Evidence、失败/RETRY、EDIT_ANSWER 和刷新恢复通过。"
+  - "API/Worker 使用同一数据库，关闭并重启后 Session、Job 和 schema 可恢复且不重复迁移。"
+  - "快速问答回归、loopback host/CORS、secret 不落库/不进日志和 BYOK 自动测试通过。"
+  - "验收报告明确记录真实 BYOK 因缺少用户凭据未执行，不把 Mock 结果表述为真实模型结果。"
+  - "Mock 技术验收 PASS，但 V1.0 发布判定为 RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS；真实 provider 生成、统一 Worker secret、模型驱动内容、语义 Evidence grounding 和 PDF 刷新/页码跳转完成前不得发布。"
+required_tests:
+  - "npm run build:backend-packages"
+  - "node scripts/check-wave1-planning.mjs"
+  - "node scripts/check.mjs all"
+  - "npm run lint && npm run typecheck && npm run test:runtime-integration && npm test"
+  - "npm run contract && npm run build && npm run e2e:smoke && npm run smoke"
+  - "node scripts/security-scan.mjs --skip-audit && git diff --check"
+  - "Guided Learning API client/轮询、runtime/Worker、BYOK/Mock 定向测试"
+manual_acceptance:
+  - "使用真实用户提供的 provider、endpoint、model 和 API key 完成一次 BYOK 连接及最小生成闭环；当前因没有凭据标记为 BLOCKED_BY_MISSING_USER_CREDENTIALS，且真实生成路径尚未接入。"
+  - "产品负责人在 T-W1-017 完成并真实 BYOK 验证后确认 Wave 1 发布条件。"
+security_considerations:
+  - "不读取、打印、提交或持久化真实 API key；session secret 只在内存 resolver 中解析。"
+  - "API 只监听 127.0.0.1；CORS 只允许明确的本地 Web origin。"
+  - "验收临时数据库、content root、日志、截图、Playwright 产物和构建物不得提交。"
+risks:
+  - risk: "真实 BYOK 输出可能不能稳定生成合法 Evidence。"
+    mitigation: "Mock 自动验收与真实 BYOK 人工验收分开记录；缺少凭据不伪造通过。"
+  - risk: "Windows CRLF 导致全仓 format 产生假差异。"
+    mitigation: "不运行全仓 format；contract、diff-check 和源码质量门槛单独执行。"
+rollback_plan: "仅回退本任务验收文档和验收发现的最小修复；不删除 migration、用户数据或既有功能。"
+deliverables:
+  - "docs/acceptance/wave1-guided-learning-acceptance.md"
+  - "docs/operations/wave1-local-runbook.md"
+  - "T-W1-016 任务文件和状态日志更新"
+completion_criteria:
+  - "所有可自动执行的验收命令实际通过并记录数量。"
+  - "阻断缺陷已修复并重新执行完整验证，或明确记录为外部/人工阻塞。"
+  - "验收数据库和运行产物未进入 Git，分支工作区干净，提交可复现。"
