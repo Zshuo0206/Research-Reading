@@ -337,7 +337,7 @@ function categoryForStatus(status: number): FailureCategory {
 }
 
 function categoryForError(error: unknown): FailureCategory {
-  if (error instanceof RuntimeSecretError) return "AUTHENTICATION";
+  if (isRuntimeSecretError(error)) return "AUTHENTICATION";
   if (error instanceof ModelGatewayError) {
     if (error.code === "INVALID_REQUEST") return "UNKNOWN";
     if (error.code === "PROVIDER_NOT_IMPLEMENTED") return "UNKNOWN";
@@ -346,6 +346,17 @@ function categoryForError(error: unknown): FailureCategory {
     return error.code;
   }
   return "UNKNOWN";
+}
+
+function isRuntimeSecretError(error: unknown): boolean {
+  if (error instanceof RuntimeSecretError) return true;
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as { name?: unknown; code?: unknown };
+  return (
+    candidate.name === "RuntimeSecretError" &&
+    (candidate.code === "INVALID_SECRET" ||
+      candidate.code === "SECRET_NOT_FOUND")
+  );
 }
 
 function safeFailureMessage(category: FailureCategory): string {
