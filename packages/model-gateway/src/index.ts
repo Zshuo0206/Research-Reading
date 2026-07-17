@@ -228,7 +228,7 @@ function guidedResponse(request: ModelGatewayRequest): ModelGatewayResponse {
             : [{ text: "当前上下文不足以确认答案。", claim_type: "INSUFFICIENT_EVIDENCE", context_span_id: contextId, evidence_quote_candidate: "" }],
         };
       case "GENERATE_GUIDED_STAGE_SUMMARY":
-        return { key_mastery_points: ["能够根据论文原文说明方法流程"], next_stage_hint: "V1.0 暂不开放 ANALYZE 和 TRANSFER 阶段。" };
+        return { key_mastery_points: ["能够根据论文原文说明方法流程"], major_weak_points: [], next_stage_hint: "V1.0 暂不开放 ANALYZE 和 TRANSFER 阶段。" };
       default:
         return {};
     }

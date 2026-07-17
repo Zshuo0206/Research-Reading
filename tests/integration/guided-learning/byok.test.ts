@@ -32,15 +32,17 @@ describe("Guided Learning real BYOK-shaped generation", () => {
       async (_input, init) => {
         expect(String(init?.headers && new Headers(init.headers).get("authorization"))).toBe(`Bearer ${testKey}`);
         const body = JSON.parse(String(init?.body)) as { messages?: Array<{ content?: string }> };
-        const request = JSON.parse(String(body.messages?.[1]?.content)) as { operation?: string };
+        const request = JSON.parse(String(body.messages?.[1]?.content)) as { operation?: string; output_requirements?: { shape?: unknown; constraints?: unknown } };
         seen.push(String(request.operation));
+        expect(request.output_requirements?.shape).toBeDefined();
+        expect(request.output_requirements?.constraints).toBeDefined();
         const output = request.operation === "GENERATE_GUIDED_DIRECTIONS"
           ? { directions: [{ title: "A", description: "A", selection_basis: "A" }, { title: "B", description: "B", selection_basis: "B" }] }
           : request.operation === "GENERATE_GUIDED_QUESTIONS"
             ? { questions: [{ text: "Q1" }, { text: "Q2" }, { text: "Q3" }] }
             : request.operation === "GENERATE_GUIDED_FEEDBACK"
               ? { status: "SUCCESS", summary: "S", omissions: [], reference_answer: "R", claims: [{ text: "paper quote", claim_type: "PAPER_FACT", context_span_id: "context_fake_1", evidence_quote_candidate: "paper quote" }] }
-              : { key_mastery_points: ["K"], next_stage_hint: "N" };
+              : { key_mastery_points: ["K"], major_weak_points: [], next_stage_hint: "N" };
         return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }), { status: 200, headers: { "content-type": "application/json" } });
       },
     );
@@ -75,25 +77,29 @@ describe("Guided Learning real BYOK-shaped generation", () => {
       extractionProfileVersion: "pdf-text-v1",
       codePointLength: Array.from(text).length,
     }]);
-    const calls: string[] = [];
-    const gateway = {
-      invoke: async (request: unknown) => {
-        const value = request as { operation: string; input: { context_spans?: Array<{ context_span_id: string; text: string }> } };
-        calls.push(value.operation);
-        const span = value.input.context_spans?.[0];
-        if (value.operation === "GENERATE_GUIDED_DIRECTIONS")
-          return response(value.operation, { directions: [
-            { title: "模型方向一", description: "由 fake provider 生成。", selection_basis: "学习目标匹配。" },
-            { title: "模型方向二", description: "第二个模型方向。", selection_basis: "证据可回查。" },
-          ] });
-        if (value.operation === "GENERATE_GUIDED_QUESTIONS")
-          return response(value.operation, { questions: [{ text: "模型问题一？" }, { text: "模型问题二？" }, { text: "模型问题三？" }] });
-        if (value.operation === "GENERATE_GUIDED_FEEDBACK")
-          return response(value.operation, { status: "SUCCESS", summary: "模型点评", omissions: [], reference_answer: text, claims: [{ text: `论文明确写道：${span?.text ?? text}`, claim_type: "PAPER_FACT", context_span_id: span?.context_span_id ?? "context_missing", evidence_quote_candidate: span?.text ?? text }] });
-        return response(value.operation, { key_mastery_points: ["模型总结的掌握点"], next_stage_hint: "模型建议继续复习。" });
-      },
+    const requests: Array<{ operation: string; input: Record<string, unknown> }> = [];
+    const testKey = ["fake", "test", "secret"].join("-");
+    const loggerEvents: unknown[] = [];
+    const fakeHttp = async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${testKey}`);
+      const body = JSON.parse(String(init?.body)) as { messages?: Array<{ content?: string }> };
+      const value = JSON.parse(String(body.messages?.[1]?.content)) as { operation: string; input: Record<string, unknown> };
+      requests.push(value);
+      const contextSpans = Array.isArray(value.input.context_spans) ? value.input.context_spans as Array<{ context_span_id: string; text: string }> : [];
+      const span = contextSpans[0];
+      const output = value.operation === "GENERATE_GUIDED_DIRECTIONS"
+        ? { directions: [{ title: "模型方向一", description: "由 fake provider 生成。", selection_basis: "学习目标匹配。" }, { title: "模型方向二", description: "第二个模型方向。", selection_basis: "证据可回查。" }] }
+        : value.operation === "GENERATE_GUIDED_QUESTIONS"
+          ? { questions: [{ text: "模型问题一？" }, { text: "模型问题二？" }, { text: "模型问题三？" }] }
+          : value.operation === "GENERATE_GUIDED_FEEDBACK"
+          ? { status: "SUCCESS", summary: "模型点评", omissions: [], reference_answer: text, claims: [
+            { text: "该段落描述了方法流程。", claim_type: "PAPER_FACT", context_span_id: span?.context_span_id ?? "context_missing", evidence_quote_candidate: span?.text ?? text },
+            { text: "这段原文也是该方法依据。", claim_type: "AUTHOR_CLAIM", context_span_id: span?.context_span_id ?? "context_missing", evidence_quote_candidate: span?.text ?? text },
+          ] }
+            : { key_mastery_points: ["模型总结的掌握点"], major_weak_points: ["模型指出的薄弱点"], next_stage_hint: "模型建议继续复习。" };
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }), { status: 200, headers: { "content-type": "application/json" } });
     };
-    const worker = createWorkerRuntime("byok-worker", databasePath, { guidedLearningGateway: gateway });
+    const worker = createWorkerRuntime("byok-worker", databasePath, { byokHttpClient: fakeHttp, byokEnvironment: { WORKFLOW_BYOK_API_KEY: testKey }, byokLogger: { log: (event) => loggerEvents.push(event) } });
     const created = api.guidedLearningHandlers.create({
       project_id: "proj_byok",
       document_version_id: "docv_byok",
@@ -104,6 +110,8 @@ describe("Guided Learning real BYOK-shaped generation", () => {
     let session = api.guidedLearningRuntime.getSession(created.session.session_id);
     expect(session.candidate_directions[0]?.title).toBe("模型方向一");
     expect(api.storage.getJob(created.job_id)?.payload).toMatchObject({ provider_config: provider });
+    expect(JSON.stringify(created)).not.toContain(testKey);
+    expect(JSON.stringify(api.database.prepare("SELECT payload_json, snapshot_json FROM jobs CROSS JOIN guided_learning_sessions").all())).not.toContain(testKey);
     await command(api, session.session_id, "SELECT_DIRECTION", { direction_id: session.candidate_directions[0].direction_id });
     session = api.guidedLearningRuntime.getSession(session.session_id);
     await command(api, session.session_id, "START_STAGE", { stage_id: "UNDERSTAND" });
@@ -130,7 +138,23 @@ describe("Guided Learning real BYOK-shaped generation", () => {
     await worker.jobRuntime.runOnce();
     session = api.guidedLearningRuntime.getSession(session.session_id);
     expect(session.stage_summary?.key_mastery_points).toEqual(["模型总结的掌握点"]);
-    expect(calls).toEqual(["GENERATE_GUIDED_DIRECTIONS", "GENERATE_GUIDED_QUESTIONS", "GENERATE_GUIDED_FEEDBACK", "GENERATE_GUIDED_STAGE_SUMMARY"]);
+    expect(session.stage_summary?.major_weak_points).toEqual(["模型指出的薄弱点"]);
+    expect(requests.map((request) => request.operation)).toEqual(["GENERATE_GUIDED_DIRECTIONS", "GENERATE_GUIDED_QUESTIONS", "GENERATE_GUIDED_FEEDBACK", "GENERATE_GUIDED_STAGE_SUMMARY"]);
+    for (const operation of ["GENERATE_GUIDED_QUESTIONS", "GENERATE_GUIDED_FEEDBACK", "GENERATE_GUIDED_STAGE_SUMMARY"]) {
+      expect(requests.find((request) => request.operation === operation)?.input.selected_direction).toMatchObject({ title: "模型方向一", description: "由 fake provider 生成。", selection_basis: "学习目标匹配。" });
+    }
+    const feedbackInput = requests.find((request) => request.operation === "GENERATE_GUIDED_FEEDBACK")?.input;
+    expect(feedbackInput).toMatchObject({ current_question: "模型问题一？", current_question_order: 1, user_answer: "我的模型驱动回答" });
+    expect(feedbackQuestion.evidence).toHaveLength(1);
+    expect(feedbackQuestion.reference_answer.claims).toHaveLength(2);
+    expect(feedbackQuestion.reference_answer.claims[0]?.evidence_refs).toEqual(feedbackQuestion.reference_answer.claims[1]?.evidence_refs);
+    const summaryInput = requests.find((request) => request.operation === "GENERATE_GUIDED_STAGE_SUMMARY")?.input;
+    expect(summaryInput?.question_history).toHaveLength(3);
+    expect(summaryInput?.completed_question_orders).toEqual([1]);
+    expect(summaryInput?.skipped_question_orders).toEqual([2, 3]);
+    expect(JSON.stringify(loggerEvents)).not.toContain(testKey);
+    expect(JSON.stringify(api.database.prepare("SELECT provider_config_json, snapshot_json FROM guided_learning_provider_configs CROSS JOIN guided_learning_sessions").all())).not.toContain(testKey);
+    expect((api.database.prepare("SELECT payload_json FROM jobs").all() as Array<{ payload_json: string }>).every((row) => JSON.parse(row.payload_json).provider_config && JSON.stringify(JSON.parse(row.payload_json).provider_config) === JSON.stringify(provider))).toBe(true);
     worker.database.close();
     api.database.close();
     await rm(directory, { recursive: true, force: true });

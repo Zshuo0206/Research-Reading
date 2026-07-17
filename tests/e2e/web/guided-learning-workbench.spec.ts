@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
-test("runs the Guided Learning UI through a real PDF Mock-shaped session and restores after refresh", async ({
+test("covers BYOK controls with a Mock Guided Learning UI flow and restores after refresh", async ({
   page,
 }) => {
   let state = "CREATED";
