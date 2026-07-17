@@ -7,6 +7,7 @@ import { createApiRuntime } from "../../../apps/api/src/runtime.js";
 import { createWorkerRuntime } from "../../../apps/worker/src/runtime.js";
 import {
   resolveClaim,
+  shadowMatchBucket,
   type GuidedLearningEvidenceResolutionEvent,
   type GuidedLearningEvidenceResolutionLogger,
 } from "../../../apps/worker/src/workflow/guided-learning.js";
@@ -212,6 +213,27 @@ describe("Guided Learning real BYOK-shaped generation", () => {
       [0, "QUOTE_NOT_FOUND", "ZERO"],
       [1, "MODEL_INSUFFICIENT_EVIDENCE", "NOT_CHECKED"],
     ]);
+    expect(evidenceEvents[0]).toMatchObject({
+      shadow_probe_version: "quote-shadow.v1",
+      shadow_nfc_match_bucket: "ZERO",
+      shadow_nfkc_match_bucket: "ZERO",
+      shadow_whitespace_match_bucket: "ZERO",
+      shadow_dehyphenation_match_bucket: "ZERO",
+      shadow_punctuation_match_bucket: "ZERO",
+      shadow_casefold_match_bucket: "ZERO",
+      shadow_layout_combined_match_bucket: "ZERO",
+      shadow_broad_combined_match_bucket: "ZERO",
+    });
+    expect(evidenceEvents[1]?.shadow_probe_version).toBeUndefined();
+    const allowedEventFields = new Set([
+      "event", "operation", "claim_index", "model_claim_type", "resolution_outcome", "resolution_reason",
+      "context_span_id_present", "context_span_found", "document_version_matches", "quote_present", "quote_codepoint_length",
+      "exact_match_count_bucket", "page_number", "shadow_probe_version", "shadow_nfc_match_bucket", "shadow_nfkc_match_bucket",
+      "shadow_whitespace_match_bucket", "shadow_dehyphenation_match_bucket", "shadow_punctuation_match_bucket", "shadow_casefold_match_bucket",
+      "shadow_layout_combined_match_bucket", "shadow_broad_combined_match_bucket",
+    ]);
+    for (const event of evidenceEvents)
+      for (const field of Object.keys(event)) expect(allowedEventFields.has(field)).toBe(true);
     const serializedEvents = JSON.stringify(evidenceEvents);
     for (const marker of [
       "SECRET_USER_ANSWER_MARKER",
@@ -297,7 +319,78 @@ describe("Guided Learning real BYOK-shaped generation", () => {
       quote: "unique quote",
       verification_status: "VERIFIED",
     });
+    expect(results[10]?.diagnostic.shadow_probe_version).toBeUndefined();
+    for (const index of [0, 1, 2, 3, 4, 5, 6, 7, 9, 10])
+      expect(results[index]?.diagnostic.shadow_probe_version).toBeUndefined();
     expect(JSON.stringify(results.map((result) => result.diagnostic))).not.toContain("SECRET_");
+  });
+
+  it("classifies shadow-only quote mismatches without changing the business result", () => {
+    const baseContext = {
+      context_span_id: "shadow_context",
+      document_version_id: "shadow_document",
+      page_number: 4,
+      page_text_sha256: "a".repeat(64),
+      extraction_profile_version: "pdf-text-v1",
+    };
+    const resolveShadow = (pageText: string, quote: string) => resolveClaim(
+      { text: "shadow claim", claim_type: "PAPER_FACT", context_span_id: baseContext.context_span_id, evidence_quote_candidate: quote },
+      [{ ...baseContext, text: pageText }],
+      baseContext.document_version_id,
+    ).diagnostic;
+    const zeroShadows = {
+      shadow_nfc_match_bucket: "ZERO",
+      shadow_nfkc_match_bucket: "ZERO",
+      shadow_whitespace_match_bucket: "ZERO",
+      shadow_dehyphenation_match_bucket: "ZERO",
+      shadow_punctuation_match_bucket: "ZERO",
+      shadow_casefold_match_bucket: "ZERO",
+      shadow_layout_combined_match_bucket: "ZERO",
+      shadow_broad_combined_match_bucket: "ZERO",
+    } as const;
+    const cases = [
+      { name: "NFC", pageText: "café", quote: "cafe\u0301", expected: { ...zeroShadows, shadow_nfc_match_bucket: "ONE", shadow_nfkc_match_bucket: "ONE", shadow_layout_combined_match_bucket: "ONE", shadow_broad_combined_match_bucket: "ONE" } },
+      { name: "NFKC", pageText: "①②③", quote: "123", expected: { ...zeroShadows, shadow_nfkc_match_bucket: "ONE", shadow_layout_combined_match_bucket: "ONE", shadow_broad_combined_match_bucket: "ONE" } },
+      { name: "whitespace", pageText: "alpha beta", quote: "alpha  beta", expected: { ...zeroShadows, shadow_whitespace_match_bucket: "ONE", shadow_layout_combined_match_bucket: "ONE", shadow_broad_combined_match_bucket: "ONE" } },
+      { name: "NBSP", pageText: "alpha beta", quote: "alpha\u00a0beta", expected: { ...zeroShadows, shadow_nfkc_match_bucket: "ONE", shadow_whitespace_match_bucket: "ONE", shadow_punctuation_match_bucket: "ONE", shadow_layout_combined_match_bucket: "ONE", shadow_broad_combined_match_bucket: "ONE" } },
+      { name: "dehyphenation", pageText: "controller", quote: "control-\nler", expected: { ...zeroShadows, shadow_dehyphenation_match_bucket: "ONE", shadow_layout_combined_match_bucket: "ONE", shadow_broad_combined_match_bucket: "ONE" } },
+      { name: "ordinary-hyphen", pageText: "model-based", quote: "modelbased", expected: zeroShadows },
+      { name: "punctuation", pageText: "\u201cquote\u201d", quote: '"quote"', expected: { ...zeroShadows, shadow_punctuation_match_bucket: "ONE", shadow_broad_combined_match_bucket: "ONE" } },
+      { name: "casefold", pageText: "Case Sensitive", quote: "case sensitive", expected: { ...zeroShadows, shadow_casefold_match_bucket: "ONE", shadow_broad_combined_match_bucket: "ONE" } },
+      { name: "layout", pageText: "①  controller", quote: "1 control-\nler", expected: { ...zeroShadows, shadow_layout_combined_match_bucket: "ONE", shadow_broad_combined_match_bucket: "ONE" } },
+      { name: "broad", pageText: "\u201c①  controller\u201d", quote: '"1 control-\nLER"', expected: { ...zeroShadows, shadow_broad_combined_match_bucket: "ONE" } },
+      { name: "paraphrase", pageText: "The method uses a controller.", quote: "This approach employs a control unit.", expected: zeroShadows },
+      { name: "multiple", pageText: "foo  bar foo  bar", quote: "foo bar", expected: { ...zeroShadows, shadow_whitespace_match_bucket: "MULTIPLE", shadow_layout_combined_match_bucket: "MULTIPLE", shadow_broad_combined_match_bucket: "MULTIPLE" } },
+    ] as const;
+    for (const { name, pageText, quote, expected } of cases) {
+      const diagnostic = resolveShadow(pageText, quote);
+      expect(diagnostic.resolution_reason, name).toBe("QUOTE_NOT_FOUND");
+      expect(diagnostic.resolution_outcome, name).toBe("INSUFFICIENT_EVIDENCE");
+      expect(diagnostic.exact_match_count_bucket, name).toBe("ZERO");
+      expect(diagnostic.shadow_probe_version, name).toBe("quote-shadow.v1");
+      for (const [field, bucket] of Object.entries(expected))
+        expect((diagnostic as unknown as Record<string, unknown>)[field], name).toBe(bucket);
+      expect(JSON.stringify(diagnostic)).not.toContain("shadow claim");
+    }
+    expect(shadowMatchBucket("page", "quote", () => { throw new Error("probe failure"); })).toBe("NOT_RUN");
+  });
+
+  it("does not create Evidence when a shadow probe finds a normalized match", async () => {
+    const evidenceEvents: GuidedLearningEvidenceResolutionEvent[] = [];
+    const session = await runSingleFeedbackScenario(
+      { log: (event) => evidenceEvents.push(event) },
+      { pageText: "Canonical Text", quote: "canonical text" },
+    );
+    const question = session.questions?.[0] as unknown as { evidence?: unknown[]; reference_answer?: { claims?: Array<{ claim_type: string }> } } | undefined;
+    expect(session.state).toBe("FEEDBACK_READY");
+    expect(question?.evidence).toEqual([]);
+    expect(question?.reference_answer?.claims?.[0]?.claim_type).toBe("INSUFFICIENT_EVIDENCE");
+    expect(evidenceEvents[0]).toMatchObject({
+      resolution_reason: "QUOTE_NOT_FOUND",
+      resolution_outcome: "INSUFFICIENT_EVIDENCE",
+      exact_match_count_bucket: "ZERO",
+      shadow_casefold_match_bucket: "ONE",
+    });
   });
 
   it("isolates logger failures and preserves the normal feedback result", async () => {
@@ -336,13 +429,17 @@ function response(operation: string, output: unknown) {
   return { schema_version: "model-gateway.v1", message_kind: "RESPONSE", operation, output };
 }
 
-async function runSingleFeedbackScenario(logger: GuidedLearningEvidenceResolutionLogger) {
+async function runSingleFeedbackScenario(
+  logger: GuidedLearningEvidenceResolutionLogger,
+  options: { pageText?: string; quote?: string } = {},
+) {
   const directory = await mkdtemp(join(tmpdir(), "research-reading-diagnostics-"));
   const databasePath = join(directory, "runtime.sqlite");
   const api = createApiRuntime(databasePath, join(directory, "content"));
   api.storage.createProject("proj_diagnostics", "Diagnostics");
   api.storage.createDocument("doc_diagnostics", "proj_diagnostics", "paper.pdf");
-  const text = "唯一证据引用";
+  const text = options.pageText ?? "唯一证据引用";
+  const quote = options.quote ?? text;
   const hash = createHash("sha256").update(text).digest("hex");
   api.storage.createDocumentVersion({ documentVersionId: "docv_diagnostics", documentId: "doc_diagnostics", sourceSha256: hash, pageCount: 1, extractionProfileVersion: "pdf-text-v1" });
   api.storage.saveDocumentPages("docv_diagnostics", [{ pageNumber: 1, canonicalPageText: text, pageTextSha256: hash, extractionProfileVersion: "pdf-text-v1", codePointLength: Array.from(text).length }]);
@@ -351,7 +448,7 @@ async function runSingleFeedbackScenario(logger: GuidedLearningEvidenceResolutio
     if (value.operation === "GENERATE_GUIDED_DIRECTIONS") return response(value.operation, { directions: [{ title: "一", description: "一", selection_basis: "一" }, { title: "二", description: "二", selection_basis: "二" }] });
     if (value.operation === "GENERATE_GUIDED_QUESTIONS") return response(value.operation, { questions: [{ text: "一？" }, { text: "二？" }, { text: "三？" }] });
     const span = value.input?.context_spans?.[0];
-    return response(value.operation, { status: "SUCCESS", summary: "点评", omissions: [], reference_answer: "参考", claims: [{ text: "主张", claim_type: "PAPER_FACT", context_span_id: span?.context_span_id, evidence_quote_candidate: span?.text }] });
+    return response(value.operation, { status: "SUCCESS", summary: "点评", omissions: [], reference_answer: "参考", claims: [{ text: "主张", claim_type: "PAPER_FACT", context_span_id: span?.context_span_id, evidence_quote_candidate: quote }] });
   } };
   const worker = createWorkerRuntime("diagnostics-worker", databasePath, { guidedLearningGateway: gateway, guidedLearningEvidenceResolutionLogger: logger });
   const created = api.guidedLearningHandlers.create({ project_id: "proj_diagnostics", document_version_id: "docv_diagnostics", learning_goal: "验证诊断", provider_config: provider });

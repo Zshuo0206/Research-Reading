@@ -40,6 +40,12 @@ export type GuidedLearningEvidenceExactMatchCountBucket =
   | "ONE"
   | "MULTIPLE";
 
+export type GuidedLearningShadowMatchBucket =
+  | "NOT_RUN"
+  | "ZERO"
+  | "ONE"
+  | "MULTIPLE";
+
 export interface GuidedLearningEvidenceResolutionEvent {
   event: "guided_feedback_evidence_resolution";
   operation: "GUIDED_LEARNING_FEEDBACK_GENERATION";
@@ -54,6 +60,15 @@ export interface GuidedLearningEvidenceResolutionEvent {
   quote_codepoint_length?: number;
   exact_match_count_bucket: GuidedLearningEvidenceExactMatchCountBucket;
   page_number?: number;
+  shadow_probe_version?: "quote-shadow.v1";
+  shadow_nfc_match_bucket?: GuidedLearningShadowMatchBucket;
+  shadow_nfkc_match_bucket?: GuidedLearningShadowMatchBucket;
+  shadow_whitespace_match_bucket?: GuidedLearningShadowMatchBucket;
+  shadow_dehyphenation_match_bucket?: GuidedLearningShadowMatchBucket;
+  shadow_punctuation_match_bucket?: GuidedLearningShadowMatchBucket;
+  shadow_casefold_match_bucket?: GuidedLearningShadowMatchBucket;
+  shadow_layout_combined_match_bucket?: GuidedLearningShadowMatchBucket;
+  shadow_broad_combined_match_bucket?: GuidedLearningShadowMatchBucket;
 }
 
 export interface GuidedLearningEvidenceResolutionLogger {
@@ -625,6 +640,7 @@ export function resolveClaim(
     return insufficientClaimResolution(claim, "QUOTE_NOT_FOUND", {
       ...quoteMetadata,
       exact_match_count_bucket: exactMatchCountBucket,
+      ...shadowQuoteDiagnostics(String(candidate.text), quote),
     });
   if (matches.length > 1)
     return insufficientClaimResolution(claim, "QUOTE_NOT_UNIQUE", {
@@ -656,6 +672,94 @@ export function resolveClaim(
       exact_match_count_bucket: "ONE",
     },
   };
+}
+
+export function shadowMatchBucket(
+  pageText: string,
+  quote: string,
+  transform: (value: string) => string,
+): GuidedLearningShadowMatchBucket {
+  try {
+    const transformedPage = Array.from(transform(pageText));
+    const transformedQuote = Array.from(transform(quote));
+    if (transformedQuote.length === 0) return "ZERO";
+    let matches = 0;
+    for (let index = 0; index <= transformedPage.length - transformedQuote.length; index++) {
+      if (transformedQuote.every((point, offset) => transformedPage[index + offset] === point)) {
+        matches += 1;
+        if (matches > 1) return "MULTIPLE";
+      }
+    }
+    return matches === 1 ? "ONE" : "ZERO";
+  } catch {
+    return "NOT_RUN";
+  }
+}
+
+function shadowQuoteDiagnostics(
+  pageText: string,
+  quote: string,
+): Pick<
+  GuidedLearningEvidenceResolutionEvent,
+  | "shadow_probe_version"
+  | "shadow_nfc_match_bucket"
+  | "shadow_nfkc_match_bucket"
+  | "shadow_whitespace_match_bucket"
+  | "shadow_dehyphenation_match_bucket"
+  | "shadow_punctuation_match_bucket"
+  | "shadow_casefold_match_bucket"
+  | "shadow_layout_combined_match_bucket"
+  | "shadow_broad_combined_match_bucket"
+> {
+  const nfc = (value: string) => value.normalize("NFC");
+  const nfkc = (value: string) => value.normalize("NFKC");
+  const whitespace = collapseUnicodeWhitespace;
+  const dehyphenation = removeLineBreakDehyphenation;
+  const punctuation = foldShadowPunctuation;
+  const casefold = (value: string) => value.toLowerCase();
+  const layoutCombined = (value: string) => collapseUnicodeWhitespace(removeLineBreakDehyphenation(value.normalize("NFKC")));
+  const broadCombined = (value: string) => casefold(foldShadowPunctuation(layoutCombined(value)));
+  return {
+    shadow_probe_version: "quote-shadow.v1",
+    shadow_nfc_match_bucket: shadowMatchBucket(pageText, quote, nfc),
+    shadow_nfkc_match_bucket: shadowMatchBucket(pageText, quote, nfkc),
+    shadow_whitespace_match_bucket: shadowMatchBucket(pageText, quote, whitespace),
+    shadow_dehyphenation_match_bucket: shadowMatchBucket(pageText, quote, dehyphenation),
+    shadow_punctuation_match_bucket: shadowMatchBucket(pageText, quote, punctuation),
+    shadow_casefold_match_bucket: shadowMatchBucket(pageText, quote, casefold),
+    shadow_layout_combined_match_bucket: shadowMatchBucket(pageText, quote, layoutCombined),
+    shadow_broad_combined_match_bucket: shadowMatchBucket(pageText, quote, broadCombined),
+  };
+}
+
+function collapseUnicodeWhitespace(value: string): string {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
+function removeLineBreakDehyphenation(value: string): string {
+  return value.replace(/-[ \t\u00a0]*\r?\n[ \t\u00a0]*/gu, "");
+}
+
+function foldShadowPunctuation(value: string): string {
+  const mapping: Record<string, string> = {
+    "\u2018": "'",
+    "\u2019": "'",
+    "\u201A": "'",
+    "\u201B": "'",
+    "\u2032": "'",
+    "\u2035": "'",
+    "\u201C": '"',
+    "\u201D": '"',
+    "\u201E": '"',
+    "\u201F": '"',
+    "\u2033": '"',
+    "\u2036": '"',
+    "\u2013": "-",
+    "\u2014": "-",
+    "\u2212": "-",
+    "\u00a0": " ",
+  };
+  return Array.from(value).map((point) => mapping[point] ?? point).join("");
 }
 
 function insufficientClaimResolution(
