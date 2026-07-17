@@ -13,6 +13,7 @@ scope:
   - "记录浏览器真实 BYOK、Evidence 人工抽查、产品负责人批准和最终 V1.0 发布判定。"
   - "修复正式 Worker 入口的持久 SQLite Job 轮询、idle wait、顺序 runOnce 和 graceful shutdown。"
   - "修复真实科研 PDF 上传的默认 1 MiB bodyLimit 阻断：仅上传路由允许最大 32 MiB，并为超限请求返回 api.v1 413。"
+  - "修复 DeepSeek V4 Guided Learning 结构化 JSON 响应兼容性：关闭仅限 DeepSeek 的 thinking，强化 JSON 示例和安全响应诊断，不改变其他 OpenAI-compatible provider。"
 out_of_scope:
   - "新产品功能、OCR、第二/第三学习阶段、ANALYZE、TRANSFER、多篇论文、远程部署、多用户、知识图谱、写作辅助、团队协作、UI 重构。"
 dependencies:
@@ -22,7 +23,11 @@ writable_paths:
   - apps/worker/src/worker.ts
   - apps/worker/src/worker-loop.ts
   - apps/worker/src/worker-service.ts
+  - apps/worker/src/runtime.ts
+  - packages/model-gateway/src/openai-compatible.ts
   - tests/integration/jobs/worker-loop.test.ts
+  - tests/integration/byok/openai-compatible.test.ts
+  - tests/integration/guided-learning/byok.test.ts
   - apps/api/src/server.ts
   - apps/api/src/upload-limits.ts
   - apps/web/src/features/guided-learning/api.ts
@@ -45,7 +50,6 @@ read_only_paths:
   - apps/api/migrations/006_guided_learning_provider_config.sql
   - tests/fixtures/pdf/synthetic-text.pdf
 forbidden_paths:
-  - packages/**
   - tests/contracts/**
   - tests/fixtures/**
   - scripts/**
@@ -57,6 +61,7 @@ acceptance_criteria:
   - "真实外部 BYOK、浏览器真实 BYOK、Evidence 人工抽查和产品负责人批准分别记录 PASS 或准确阻塞状态；fake provider 和 Mock 不得替代真实验收。"
   - "缺少凭据时 V1_RELEASE_STATUS 必须为 BLOCKED_BY_MISSING_USER_CREDENTIALS 或 RELEASE_CANDIDATE_AWAITING_REAL_BYOK_ACCEPTANCE，不得标记 ACCEPTED、RELEASED 或 v1.0.0。"
   - "正式非 smoke Worker 持久轮询 SQLite Job 队列，默认 idle delay 为 250ms；停止时不领取新 Job，等待当前 Job 完成，只 close 一次并输出一次 stopped。"
+  - "BYOK 网关对 finish_reason、content、reasoning_content 和 provider response schema 失败安全分类；Worker 诊断日志不包含 secret、prompt 或模型响应原文。"
 manual_acceptance:
   - "已有安全配置的 provider、HTTPS base_url、model 和 WORKFLOW_BYOK_API_KEY 时，执行连接测试及四类 Guided Learning 真实生成闭环。"
   - "逐项检查方向、问题、点评、Reference Answer、Evidence、Summary、刷新/重启恢复、RETRY、EDIT_ANSWER、快速问答和 PDF 页码跳转。"

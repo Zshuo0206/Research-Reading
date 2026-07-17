@@ -38,6 +38,10 @@ const migrationsDirectory = fileURLToPath(
   new URL("../../api/migrations/", import.meta.url),
 );
 
+const DEFAULT_BYOK_LOGGER: ByokGatewayLogger = {
+  log: (event) => console.error(JSON.stringify(event)),
+};
+
 export interface WorkerRuntime {
   database: DatabaseSync;
   jobRuntime: JobRuntime;
@@ -64,7 +68,7 @@ export function createWorkerRuntime(
       options.byokEnvironment ?? process.env,
     ),
     options.byokHttpClient ?? fetch,
-    options.byokLogger,
+    options.byokLogger ?? DEFAULT_BYOK_LOGGER,
   );
   const gateway = {
     invoke: (request: unknown) => {

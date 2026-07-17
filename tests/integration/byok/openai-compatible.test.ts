@@ -31,6 +31,15 @@ const providerConfig = {
   max_output_tokens: 500,
 } as const;
 
+const deepSeekProviderConfig = {
+  provider: "CUSTOM_OPENAI_COMPATIBLE",
+  base_url: "https://api.deepseek.com",
+  model: "deepseek-v4-pro",
+  request_timeout_ms: 1_000,
+  max_input_characters: 10_000,
+  max_output_tokens: 2_000,
+} as const;
+
 const questionRequest = {
   schema_version: "model-gateway.v1",
   message_kind: "REQUEST",
@@ -71,10 +80,17 @@ const answerRequest = {
   },
 } satisfies ModelGatewayRequest;
 
+const deepSeekQuestionRequest = {
+  ...questionRequest,
+  provider_config: deepSeekProviderConfig,
+} satisfies ModelGatewayRequest;
+
 function openAiResponse(output: unknown): Response {
   return new Response(
     JSON.stringify({
-      choices: [{ message: { content: JSON.stringify(output) } }],
+      choices: [
+        { finish_reason: "stop", message: { content: JSON.stringify(output) } },
+      ],
     }),
     { status: 200, headers: { "content-type": "application/json" } },
   );
@@ -109,15 +125,189 @@ describe("OpenAI-compatible BYOK gateway", () => {
       max_tokens: 500,
       response_format: { type: "json_object" },
     });
+    expect(JSON.parse(String(init?.body)).thinking).toBeUndefined();
   });
 
-  it("maps invalid provider JSON to a deterministic gateway failure", async () => {
-    const http: HttpClient = async () =>
-      new Response(JSON.stringify({ choices: [] }), { status: 200 });
+  it("disables DeepSeek thinking for bounded structured JSON and strengthens the prompt", async () => {
+    const http = vi.fn<HttpClient>(async () =>
+      openAiResponse({
+        document_language: "en",
+        retrieval_queries: ["random trial method"],
+        retrieval_terms: ["random", "trial"],
+        questions: [{ text: "Which randomization method was used?" }],
+      }),
+    );
     const gateway = createGateway(http);
+
+    await gateway.invoke(deepSeekQuestionRequest);
+
+    const [, init] = http.mock.calls[0];
+    const body = JSON.parse(String(init?.body)) as {
+      messages: Array<{ role: string; content: string }>;
+      max_tokens: number;
+      response_format: { type: string };
+      thinking?: { type: string };
+    };
+    expect(body).toMatchObject({
+      model: "deepseek-v4-pro",
+      max_tokens: 2_000,
+      response_format: { type: "json_object" },
+      thinking: { type: "disabled" },
+    });
+    expect(body.messages[0]?.content).toContain("valid JSON object");
+    expect(body.messages[0]?.content).toContain("complete JSON example");
+    expect(body.messages[0]?.content).toContain("code fences");
+    expect(body.messages[1]?.content).toContain('"example"');
+  });
+
+  it("accepts reasoning_content while parsing only the final JSON content", async () => {
+    const logs: ByokGatewayLogEvent[] = [];
+    const gateway = createGateway(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  reasoning_content: "private reasoning is not logged",
+                  content: JSON.stringify({
+                    document_language: "en",
+                    retrieval_queries: ["random trial method"],
+                    retrieval_terms: ["random", "trial"],
+                    questions: [
+                      { text: "Which randomization method was used?" },
+                    ],
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      logs,
+    );
+
+    await expect(gateway.invoke(questionRequest)).resolves.toMatchObject({
+      operation: "GENERATE_QUESTION_PLAN",
+    });
+    expect(logs[0]).toMatchObject({
+      finish_reason: "stop",
+      content_is_null: false,
+      content_length: expect.any(Number),
+      reasoning_content_length: "private reasoning is not logged".length,
+    });
+    expect(JSON.stringify(logs)).not.toContain(
+      "private reasoning is not logged",
+    );
+  });
+
+  it("classifies finish_reason length as a safe truncation error", async () => {
+    const logs: ByokGatewayLogEvent[] = [];
+    const gateway = createGateway(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                finish_reason: "length",
+                message: {
+                  content: '{"questions":[',
+                  reasoning_content: "hidden",
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      logs,
+    );
 
     await expect(gateway.invoke(questionRequest)).rejects.toMatchObject({
       code: "INVALID_RESPONSE",
+      message:
+        "The model provider response was truncated (finish_reason=length).",
+    });
+    expect(logs[0]).toMatchObject({
+      finish_reason: "length",
+      content_is_null: false,
+      content_length: 14,
+      reasoning_content_length: 6,
+    });
+  });
+
+  it.each([
+    [null, true, "The model provider returned empty JSON message content."],
+    ["", false, "The model provider returned empty JSON message content."],
+  ] as const)("classifies %s content as an empty-content error", async (content, isNull, message) => {
+    const logs: ByokGatewayLogEvent[] = [];
+    const gateway = createGateway(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ finish_reason: "stop", message: { content } }],
+          }),
+          { status: 200 },
+        ),
+      logs,
+    );
+
+    await expect(gateway.invoke(questionRequest)).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+      message,
+    });
+    expect(logs[0]).toMatchObject({
+      finish_reason: "stop",
+      content_is_null: isNull,
+      content_length: 0,
+      reasoning_content_length: 0,
+    });
+  });
+
+  it("classifies malformed, truncated, and fenced content as invalid JSON without guessing", async () => {
+    for (const content of [
+      '{"questions":[',
+      '```json\n{"questions": []}\n```',
+    ]) {
+      const logs: ByokGatewayLogEvent[] = [];
+      const gateway = createGateway(
+        async () =>
+          new Response(
+            JSON.stringify({
+              choices: [{ finish_reason: "stop", message: { content } }],
+            }),
+            { status: 200 },
+          ),
+        logs,
+      );
+
+      await expect(gateway.invoke(questionRequest)).rejects.toMatchObject({
+        code: "INVALID_RESPONSE",
+        message: "The model provider message content was not valid JSON.",
+      });
+      expect(logs[0]).toMatchObject({
+        finish_reason: "stop",
+        content_is_null: false,
+      });
+    }
+  });
+
+  it("maps invalid provider JSON to a deterministic gateway failure", async () => {
+    const logs: ByokGatewayLogEvent[] = [];
+    const gateway = createGateway(
+      async () =>
+        new Response(JSON.stringify({ choices: [] }), { status: 200 }),
+      logs,
+    );
+
+    await expect(gateway.invoke(questionRequest)).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+      message: "The model provider response schema is invalid.",
+    });
+    expect(logs[0]).toMatchObject({
+      content_is_null: true,
+      content_length: 0,
+      reasoning_content_length: 0,
     });
   });
 

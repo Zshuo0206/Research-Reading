@@ -1,7 +1,7 @@
 # Current State
 
 最后更新：2026-07-17（Asia/Shanghai）
-状态：`WAVE_1_RELEASE_GATE_PDF_UPLOAD_REPAIR_IMPLEMENTING`
+状态：`WAVE_1_RELEASE_GATE_BYOK_JSON_REPAIR_IMPLEMENTING`
 
 产品需求基线：V1.0 产品定义已归档至
 `docs/product/versions/科研文献引导式学习平台_V1.0产品定义.md`，开发需求见
@@ -64,7 +64,7 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-015：`REVIEW`，已进入 main；包含 Guided Learning Web 入口、目标/PDF/Session 创建、轮询恢复、方向选择、逐题反馈、Evidence、重试和阶段总结，仍待真实 PDF 完整 E2E、BYOK 和产品验收。
 - T-W1-016：`INTEGRATED`，Mock 技术验收通过，发布状态为 `RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS`；真实 BYOK 人工验收仍是发布门槛。
 - T-W1-017：`INTEGRATED`，真实 BYOK Guided Generation、provider config migration、Worker 环境 secret、四类专用输入/输出约束、source-only Evidence verification、PDF content endpoint、刷新恢复和页码定位已进入 main；真实外部 BYOK 人工验收因缺少用户凭据保持阻塞。
-- T-W1-018：`IMPLEMENTING`，已修复正式 Worker 持久轮询、idle wait 和 graceful shutdown。随后人工使用 8.34 MiB 真实文本 PDF 上传时出现 `ERR_CONNECTION_ABORTED`，根因为 PDF 上传路由仍受 Fastify 默认 1 MiB bodyLimit 限制；本轮已实施路由级 32 MiB 上限和结构化 413 修复，完整自动 Gate 与 live API 验证通过，真实 PDF 人工复验、真实 BYOK、浏览器人工验收、Evidence 人工抽查和产品负责人批准仍待完成。
+- T-W1-018：`IMPLEMENTING`，已修复 Worker 轮询、PDF 32 MiB 路由级 bodyLimit 和结构化 413。随后真实 DeepSeek V4 Guided Feedback 在两次重试中返回不可解析 JSON；本轮已实施仅 DeepSeek 的非思考结构化请求、完整 JSON 示例、安全响应诊断和 fail-closed 错误分类，定向 17/17 通过。`npm run ci` 首步仍被仓库既有 17 个 format 差异阻断，其余 CI 门禁独立通过；真实浏览器重试待完成。原失败 Session 可在重启后直接 RETRY，不需要重建项目、PDF 或 Session；真实 BYOK、浏览器人工验收、Evidence 人工抽查和产品负责人批准仍待完成。
 - T-W1-005：保持 `DRAFT`；扩展后的双模式完整范围尚未进入 main；快速问答子集和 Guided Learning API/SQLite runtime 已存在，其余 Web 和完整产品验收仍待实施。
 - T-W1-006：保持 `DRAFT`；最小快速问答 Web 和 T-W1-015 Guided Learning Web 已存在，但其完整任务范围仍待实施。
 - 不据此改变其他任务或 Gate 的状态。
@@ -79,6 +79,7 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-017 review repair 定向覆盖：默认 Worker BYOK gateway fake HTTP 四 operation、operation-specific input/output、完整 history、source-only Evidence verification、非蕴含 claim、重复 Evidence 去重、Unicode/code-point offset 和无效输出 fail-closed；Playwright 3/3 仅覆盖 BYOK 控件与 Mock UI，真实 BYOK 浏览器 E2E 标记 `BROWSER_REAL_BYOK_E2E_NOT_EXECUTED`。
 - T-W1-017 merge 后 Release Gate 复核：planning 18 tasks、runtime integration 26/26、BYOK/Evidence 13/13、`npm test` 24/24、Playwright 3/3、lint、typecheck、contract、build、smoke、security 和 `git diff --check` 全部通过；PDF fixture SHA-256 保持 `99e07b4ba995b7c90bd84628a5db55b71a4faa1f06d3714a5942741cd39a55f8`。
 - T-W1-018 Worker 修复复核：正式入口现在持续调用 `JobRuntime.runOnce()`，无 Job 时默认等待 250ms；stop 后等待当前 Job、单次 close、一次 stopped 输出；定向 Worker loop 9/9 和真实 SQLite Job 消费通过。人工发现的原始阻断已修复。
+- T-W1-018 DeepSeek JSON repair：现有请求体问题已定位为 DeepSeek V4 默认 thinking 与结构化 JSON 输出边界未显式处理；仅 DeepSeek custom base URL 发送 `thinking: { type: "disabled" }`，保留 JSON Output，四类 prompt 提供完整示例；网关安全记录 finish reason、content/reasoning 长度和 schema 错误，不记录原文或 secret。定向 BYOK/Guided Learning 17/17 通过，真实浏览器重试待执行。
 - 本地完整 `npm run ci` 仍在首步 `format` 受既有 Windows CRLF checkout 问题阻断；本次不批量改写全仓换行。
 - `contract:check` 本身已通过；不能把本地 CI 的 CRLF 阻断写成契约 drift 失败。
 - T-W1-011 分支未实际运行 smoke；本次文档同步不补写未执行结果，且本轮未修改 runtime。

@@ -43,6 +43,10 @@ export interface ByokGatewayLogEvent {
   duration_ms: number;
   http_status?: number;
   error_category?: FailureCategory;
+  finish_reason?: string | null;
+  content_is_null?: boolean;
+  content_length?: number;
+  reasoning_content_length?: number;
 }
 
 export interface ByokGatewayLogger {
@@ -50,6 +54,17 @@ export interface ByokGatewayLogger {
 }
 
 const NOOP_LOGGER: ByokGatewayLogger = { log: () => undefined };
+
+interface ProviderResponseDiagnostics {
+  finish_reason: string | null;
+  content_is_null: boolean;
+  content_length: number;
+  reasoning_content_length: number;
+}
+
+type ProviderResponseFailure = ModelGatewayError & {
+  readonly diagnostics: ProviderResponseDiagnostics;
+};
 
 export class OpenAICompatibleByokGateway implements ModelGateway {
   constructor(
@@ -82,6 +97,7 @@ export class OpenAICompatibleByokGateway implements ModelGateway {
     const startedAt = this.now();
     let status: number | undefined;
     let category: FailureCategory | undefined;
+    let responseDiagnostics: ProviderResponseDiagnostics | undefined;
 
     try {
       validateBaseUrl(
@@ -135,16 +151,24 @@ export class OpenAICompatibleByokGateway implements ModelGateway {
 
       if (request.operation === "CONNECTION_TEST") {
         const result = connectionResponse(request, true);
-        this.log(request, startedAt, "success", status);
+        this.log(request, startedAt, "success", status, undefined);
         return result;
       }
 
-      const output = await parseOutput(response);
+      let parsed: ParsedProviderOutput;
+      try {
+        parsed = await parseOutput(response);
+        responseDiagnostics = parsed.diagnostics;
+      } catch (error) {
+        if (isProviderResponseFailure(error))
+          responseDiagnostics = error.diagnostics;
+        throw error;
+      }
       const result = {
         schema_version: "model-gateway.v1",
         message_kind: "RESPONSE",
         operation: request.operation,
-        output,
+        output: parsed.output,
       } as ModelGatewayResponse;
 
       if (!validateModelGatewayEnvelope(result)) {
@@ -162,7 +186,14 @@ export class OpenAICompatibleByokGateway implements ModelGateway {
         assertCandidateContextSpanIds(answer, request.input.context_spans);
       }
 
-      this.log(request, startedAt, "success", status);
+      this.log(
+        request,
+        startedAt,
+        "success",
+        status,
+        undefined,
+        responseDiagnostics,
+      );
       return result;
     } catch (error) {
       category ??= categoryForError(error);
@@ -171,7 +202,14 @@ export class OpenAICompatibleByokGateway implements ModelGateway {
         this.log(request, startedAt, "failure", status, category);
         return result;
       }
-      this.log(request, startedAt, "failure", status, category);
+      this.log(
+        request,
+        startedAt,
+        "failure",
+        status,
+        category,
+        responseDiagnostics,
+      );
       if (error instanceof ModelGatewayError) throw error;
       throw new ModelGatewayError(category, safeFailureMessage(category));
     }
@@ -197,6 +235,7 @@ export class OpenAICompatibleByokGateway implements ModelGateway {
     outcome: "success" | "failure",
     httpStatus?: number,
     errorCategory?: FailureCategory,
+    responseDiagnostics?: ProviderResponseDiagnostics,
   ): void {
     this.logger.log({
       event: "byok_request_finished",
@@ -207,6 +246,7 @@ export class OpenAICompatibleByokGateway implements ModelGateway {
       duration_ms: Math.max(0, this.now() - startedAt),
       ...(httpStatus === undefined ? {} : { http_status: httpStatus }),
       ...(errorCategory === undefined ? {} : { error_category: errorCategory }),
+      ...(responseDiagnostics ?? {}),
     });
   }
 }
@@ -251,11 +291,16 @@ function createRequestBody(request: ByokRequest): Record<string, unknown> {
     };
   }
 
-  const input = JSON.stringify({
-    operation: request.operation,
-    output_requirements: guidedOutputInstructions(request.operation),
-    input: request.input,
-  });
+  const outputRequirements = guidedOutputInstructions(request.operation);
+  const input = JSON.stringify(
+    {
+      operation: request.operation,
+      output_requirements: outputRequirements,
+      input: request.input,
+    },
+    null,
+    2,
+  );
   if (Array.from(input).length > request.provider_config.max_input_characters) {
     throw new ModelGatewayError(
       "INVALID_REQUEST",
@@ -267,72 +312,312 @@ function createRequestBody(request: ByokRequest): Record<string, unknown> {
     messages: [
       {
         role: "system",
-        content:
-          "Return one JSON object only. Follow the operation-specific output_requirements exactly. Cite only supplied context_span_id values; do not add fields, Markdown, IDs, page numbers, offsets, hashes, or provider metadata.",
+        content: `Return exactly one valid JSON object. The response must contain JSON only. Follow the operation-specific output_requirements exactly. Here is a complete JSON example for this operation: ${JSON.stringify(outputRequirements.example)}. Cite only supplied context_span_id values; do not add fields, Markdown, code fences, IDs, page numbers, offsets, hashes, or provider metadata.`,
       },
       { role: "user", content: input },
     ],
     response_format: { type: "json_object" },
     max_tokens: request.provider_config.max_output_tokens,
+    ...(isDeepSeekStructuredRequest(request)
+      ? { thinking: { type: "disabled" } }
+      : {}),
   };
 }
 
-function guidedOutputInstructions(operation: ByokRequest["operation"]): Record<string, unknown> {
+function guidedOutputInstructions(operation: ByokRequest["operation"]): {
+  shape: Record<string, unknown>;
+  example: Record<string, unknown>;
+  constraints: string[];
+} {
   switch (operation) {
+    case "GENERATE_QUESTION_PLAN":
+      return {
+        shape: {
+          document_language: "string",
+          retrieval_queries: ["string"],
+          retrieval_terms: ["string"],
+          questions: [{ text: "string" }],
+        },
+        example: {
+          document_language: "en",
+          retrieval_queries: ["study method"],
+          retrieval_terms: ["method"],
+          questions: [{ text: "What method does the paper use?" }],
+        },
+        constraints: [
+          "return valid JSON",
+          "no Markdown",
+          "no extra explanation",
+        ],
+      };
+    case "GENERATE_ANSWER":
+      return {
+        shape: {
+          status: "SUCCESS | INSUFFICIENT_EVIDENCE",
+          claims: [
+            {
+              text: "string",
+              claim_type:
+                "PAPER_FACT | AUTHOR_CLAIM | AGENT_INFERENCE | INSUFFICIENT_EVIDENCE",
+              candidate_context_span_ids: ["string"],
+            },
+          ],
+        },
+        example: {
+          status: "SUCCESS",
+          claims: [
+            {
+              text: "The paper uses the stated method.",
+              claim_type: "PAPER_FACT",
+              candidate_context_span_ids: ["context_example"],
+            },
+          ],
+        },
+        constraints: [
+          "cite only supplied context_span_id values",
+          "use an empty claim reference for INSUFFICIENT_EVIDENCE",
+          "no Markdown or extra explanation",
+        ],
+      };
     case "GENERATE_GUIDED_DIRECTIONS":
       return {
-        shape: { directions: [{ title: "string", description: "string", selection_basis: "string" }] },
-        constraints: ["return 2 to 3 items", "do not return direction_id", "no Markdown", "no extra explanation"],
+        shape: {
+          directions: [
+            {
+              title: "string",
+              description: "string",
+              selection_basis: "string",
+            },
+          ],
+        },
+        example: {
+          directions: [
+            {
+              title: "Method design",
+              description: "Trace the study method.",
+              selection_basis: "It matches the learning goal.",
+            },
+            {
+              title: "Evidence chain",
+              description: "Trace evidence to conclusions.",
+              selection_basis: "It supports source review.",
+            },
+          ],
+        },
+        constraints: [
+          "return 2 to 3 items",
+          "do not return direction_id",
+          "no Markdown",
+          "no extra explanation",
+        ],
       };
     case "GENERATE_GUIDED_QUESTIONS":
       return {
         shape: { questions: [{ text: "string" }] },
-        constraints: ["return 3 to 7 open-ended questions", "progress from basic understanding to deeper reasoning", "use only supplied paper context", "do not return answers, IDs, Markdown, or extra explanation"],
+        example: {
+          questions: [
+            { text: "What method does the paper use?" },
+            { text: "What evidence supports the method?" },
+            { text: "How does the method affect the conclusion?" },
+          ],
+        },
+        constraints: [
+          "return 3 to 7 open-ended questions",
+          "progress from basic understanding to deeper reasoning",
+          "use only supplied paper context",
+          "do not return answers, IDs, Markdown, or extra explanation",
+        ],
       };
     case "GENERATE_GUIDED_FEEDBACK":
       return {
-        shape: { status: "SUCCESS | INSUFFICIENT_EVIDENCE", summary: "string", omissions: ["string"], reference_answer: "string", claims: [{ text: "string", claim_type: "PAPER_FACT | AUTHOR_CLAIM | AGENT_INFERENCE | INSUFFICIENT_EVIDENCE", context_span_id: "string", evidence_quote_candidate: "string" }] },
-        constraints: ["supported claims must cite supplied context_span_id", "quote must be an exact continuous quote from that span", "never return page number, char offset, hash, or Markdown", "use INSUFFICIENT_EVIDENCE when reliable evidence is unavailable", "no extra fields"],
+        shape: {
+          status: "SUCCESS | INSUFFICIENT_EVIDENCE",
+          summary: "string",
+          omissions: ["string"],
+          reference_answer: "string",
+          claims: [
+            {
+              text: "string",
+              claim_type:
+                "PAPER_FACT | AUTHOR_CLAIM | AGENT_INFERENCE | INSUFFICIENT_EVIDENCE",
+              context_span_id: "string",
+              evidence_quote_candidate: "string",
+            },
+          ],
+        },
+        example: {
+          status: "SUCCESS",
+          summary: "The answer identifies the method.",
+          omissions: ["The answer does not discuss the limitation."],
+          reference_answer: "The paper uses the stated method.",
+          claims: [
+            {
+              text: "The paper uses the stated method.",
+              claim_type: "PAPER_FACT",
+              context_span_id: "context_example",
+              evidence_quote_candidate: "The paper uses the stated method.",
+            },
+          ],
+        },
+        constraints: [
+          "supported claims must cite supplied context_span_id",
+          "quote must be an exact continuous quote from that span",
+          "never return page number, char offset, hash, or Markdown",
+          "use INSUFFICIENT_EVIDENCE when reliable evidence is unavailable",
+          "no extra fields",
+        ],
       };
     case "GENERATE_GUIDED_STAGE_SUMMARY":
       return {
-        shape: { key_mastery_points: ["string"], major_weak_points: ["string"], next_stage_hint: "string" },
-        constraints: ["base the summary on question_history", "do not return scores or mastery levels", "do not return completed or skipped question orders", "do not open ANALYZE or TRANSFER", "no Markdown or extra explanation"],
+        shape: {
+          key_mastery_points: ["string"],
+          major_weak_points: ["string"],
+          next_stage_hint: "string",
+        },
+        example: {
+          key_mastery_points: ["The learner can explain the method."],
+          major_weak_points: [
+            "The learner needs to connect evidence to conclusions.",
+          ],
+          next_stage_hint: "Review the evidence chain.",
+        },
+        constraints: [
+          "base the summary on question_history",
+          "do not return scores or mastery levels",
+          "do not return completed or skipped question orders",
+          "do not open ANALYZE or TRANSFER",
+          "no Markdown or extra explanation",
+        ],
       };
     default:
-      return { constraints: ["follow the model-gateway.v1 output schema", "no extra fields"] };
+      return { shape: {}, example: {}, constraints: ["no extra fields"] };
   }
 }
 
-async function parseOutput(response: Response): Promise<unknown> {
+function isDeepSeekStructuredRequest(request: ByokRequest): boolean {
+  if (
+    request.operation === "CONNECTION_TEST" ||
+    request.provider_config.provider !== "CUSTOM_OPENAI_COMPATIBLE"
+  )
+    return false;
+  try {
+    return (
+      new URL(request.provider_config.base_url).hostname.toLowerCase() ===
+      "api.deepseek.com"
+    );
+  } catch {
+    return false;
+  }
+}
+
+interface ParsedProviderOutput {
+  output: unknown;
+  diagnostics: ProviderResponseDiagnostics;
+}
+
+async function parseOutput(response: Response): Promise<ParsedProviderOutput> {
+  const emptyDiagnostics: ProviderResponseDiagnostics = {
+    finish_reason: null,
+    content_is_null: true,
+    content_length: 0,
+    reasoning_content_length: 0,
+  };
   let envelope: unknown;
   try {
     envelope = await response.json();
   } catch {
-    throw new ModelGatewayError(
-      "INVALID_RESPONSE",
-      "The model provider returned invalid JSON.",
+    throw providerResponseError(
+      "The model provider response was not valid JSON.",
+      emptyDiagnostics,
     );
   }
-  const content = (
-    envelope as {
-      choices?: Array<{ message?: { content?: unknown } }>;
-    }
-  ).choices?.[0]?.message?.content;
-  if (typeof content !== "string") {
-    throw new ModelGatewayError(
-      "INVALID_RESPONSE",
-      "The model provider response omitted JSON message content.",
+  if (
+    typeof envelope !== "object" ||
+    envelope === null ||
+    !Array.isArray((envelope as { choices?: unknown }).choices)
+  ) {
+    throw providerResponseError(
+      "The model provider response schema is invalid.",
+      emptyDiagnostics,
     );
   }
+  const choice = (envelope as { choices: unknown[] }).choices[0];
+  if (typeof choice !== "object" || choice === null) {
+    throw providerResponseError(
+      "The model provider response schema is invalid.",
+      emptyDiagnostics,
+    );
+  }
+  const message = (choice as { message?: unknown }).message;
+  if (typeof message !== "object" || message === null) {
+    throw providerResponseError(
+      "The model provider response schema is invalid.",
+      emptyDiagnostics,
+    );
+  }
+  const finishReason = (choice as { finish_reason?: unknown }).finish_reason;
+  const content = (message as { content?: unknown }).content;
+  const reasoningContent = (message as { reasoning_content?: unknown })
+    .reasoning_content;
+  const diagnostics: ProviderResponseDiagnostics = {
+    finish_reason: typeof finishReason === "string" ? finishReason : null,
+    content_is_null: content === null,
+    content_length:
+      typeof content === "string" ? Array.from(content).length : 0,
+    reasoning_content_length:
+      typeof reasoningContent === "string"
+        ? Array.from(reasoningContent).length
+        : 0,
+  };
+  if (diagnostics.finish_reason === "length") {
+    throw providerResponseError(
+      "The model provider response was truncated (finish_reason=length).",
+      diagnostics,
+    );
+  }
+  if (typeof content !== "string" || content.trim().length === 0) {
+    throw providerResponseError(
+      "The model provider returned empty JSON message content.",
+      diagnostics,
+    );
+  }
+  const normalized = normalizeJsonContent(content);
   try {
-    return JSON.parse(content) as unknown;
+    return { output: JSON.parse(normalized) as unknown, diagnostics };
   } catch {
-    throw new ModelGatewayError(
-      "INVALID_RESPONSE",
+    throw providerResponseError(
       "The model provider message content was not valid JSON.",
+      diagnostics,
     );
   }
+}
+
+function providerResponseError(
+  message: string,
+  diagnostics: ProviderResponseDiagnostics,
+): ProviderResponseFailure {
+  const error = new ModelGatewayError(
+    "INVALID_RESPONSE",
+    message,
+  ) as ProviderResponseFailure;
+  Object.defineProperty(error, "diagnostics", {
+    configurable: false,
+    enumerable: false,
+    value: diagnostics,
+    writable: false,
+  });
+  return error;
+}
+
+function isProviderResponseFailure(
+  error: unknown,
+): error is ProviderResponseFailure {
+  return error instanceof ModelGatewayError && "diagnostics" in error;
+}
+
+function normalizeJsonContent(content: string): string {
+  const trimmed = content.trim();
+  return trimmed.charCodeAt(0) === 0xfeff ? trimmed.slice(1).trim() : trimmed;
 }
 
 function connectionResponse(
