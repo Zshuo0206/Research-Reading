@@ -1,5 +1,6 @@
 import { GuidedLearningRuntimeError } from "./runtime.js";
 import type { GuidedLearningRuntime } from "./runtime.js";
+import type { GuidedLearningProviderConfig } from "../../../../packages/storage/dist/index.js";
 
 export class GuidedLearningApiHandlers {
   constructor(private readonly runtime: GuidedLearningRuntime) {}
@@ -8,6 +9,7 @@ export class GuidedLearningApiHandlers {
     project_id: string;
     document_version_id: string;
     learning_goal: string;
+    provider_config?: GuidedLearningProviderConfig;
   }) {
     return this.runtime.requestDirectionsGeneration(input);
   }

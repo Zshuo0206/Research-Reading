@@ -8,6 +8,22 @@ export type JobKind =
   | "QUESTION_PLAN"
   | "ANSWER_GENERATION"
   | GuidedLearningJobKind;
+export type GuidedLearningByokProvider =
+  | "OPENAI"
+  | "GEMINI"
+  | "GROQ"
+  | "OPENROUTER"
+  | "CUSTOM_OPENAI_COMPATIBLE";
+export type GuidedLearningProviderConfig =
+  | { provider: "MOCK"; fixture_id: string }
+  | {
+      provider: GuidedLearningByokProvider;
+      base_url: string;
+      model: string;
+      request_timeout_ms: number;
+      max_input_characters: number;
+      max_output_tokens: number;
+    };
 export type JobState = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
 export type ReviewStatus = "DRAFT" | "CONFIRMED" | "REJECTED";
 export type VerificationStatus =
@@ -56,7 +72,7 @@ export interface GuidedLearningGenerationJobPayload {
     | "ANSWER_SUBMITTED"
     | "QUESTION_COMPLETED"
     | "SUMMARY_GENERATING";
-  provider_config: Record<string, unknown>;
+  provider_config: GuidedLearningProviderConfig;
   selected_direction_id?: string;
   question_id?: string;
   question_order?: number;

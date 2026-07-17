@@ -18,6 +18,7 @@ import {
   type GuidedLearningJobWrite,
   type GuidedLearningSessionRepository,
   GuidedLearningStorageError,
+  type GuidedLearningProviderConfig,
 } from "../../../../packages/storage/dist/index.js";
 import type { GuidedLearningCommandRecord } from "../../../../packages/storage/dist/index.js";
 import { GuidedLearningMockAdapter } from "./mock.js";
@@ -63,9 +64,10 @@ export class GuidedLearningRuntime {
     project_id: string;
     document_version_id: string;
     learning_goal: string;
+    provider_config?: GuidedLearningProviderConfig;
   }): GuidedLearningSession {
     const session = this.newSession(input);
-    this.repository.create(session);
+    this.repository.create(session, undefined, input.provider_config);
     return session;
   }
 
@@ -73,14 +75,17 @@ export class GuidedLearningRuntime {
     project_id: string;
     document_version_id: string;
     learning_goal: string;
+    provider_config?: GuidedLearningProviderConfig;
   }): { session: GuidedLearningSession; job_id: string } {
     const session = this.newSession(input);
     const job = this.generationJob(
       session,
       "GUIDED_LEARNING_DIRECTION_GENERATION",
       "CREATED",
+      undefined,
+      input.provider_config,
     );
-    this.repository.create(session, job);
+    this.repository.create(session, job, input.provider_config);
     return { session, job_id: job.job_id };
   }
 
@@ -317,6 +322,7 @@ export class GuidedLearningRuntime {
     project_id: string;
     document_version_id: string;
     learning_goal: string;
+    provider_config?: GuidedLearningProviderConfig;
   }): GuidedLearningSession {
     if (
       !input.project_id ||
@@ -385,6 +391,7 @@ export class GuidedLearningRuntime {
     operation: GuidedLearningJobKind,
     expectedState: GuidedLearningGenerationJobPayload["expected_state"],
     question?: Value,
+    providerConfig?: GuidedLearningProviderConfig,
   ): GuidedLearningJobWrite {
     const jobId = `job_${randomUUID()}`;
     const payload: GuidedLearningGenerationJobPayload = {
@@ -396,7 +403,8 @@ export class GuidedLearningRuntime {
       learning_goal: session.learning_goal,
       expected_revision: session.session_revision,
       expected_state: expectedState,
-      provider_config: { provider: "MOCK", fixture_id: "guided-learning-v1" },
+      provider_config:
+        providerConfig ?? this.repository.getProviderConfig(session.session_id),
     };
     if (typeof session.selected_direction_id === "string")
       payload.selected_direction_id = session.selected_direction_id;

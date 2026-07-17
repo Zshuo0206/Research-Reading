@@ -198,6 +198,49 @@ function connectionTest(): ConnectionTestResponse {
   };
 }
 
+function guidedResponse(request: ModelGatewayRequest): ModelGatewayResponse {
+  const input = request.input as Record<string, unknown>;
+  const spans = Array.isArray(input.context_spans)
+    ? (input.context_spans as Array<Record<string, unknown>>)
+    : [];
+  const first = spans[0];
+  const contextId = String(first?.context_span_id ?? "context_missing");
+  const quote = String(first?.text ?? "").slice(0, 80);
+  const output = (() => {
+    switch (request.operation) {
+      case "GENERATE_GUIDED_DIRECTIONS":
+        return {
+          directions: [
+            { title: "理解方法设计", description: "梳理方法框架和关键模块。", selection_basis: "与学习目标相关。" },
+            { title: "理解证据链", description: "理解证据如何支撑研究结论。", selection_basis: "便于回看论文依据。" },
+          ],
+        };
+      case "GENERATE_GUIDED_QUESTIONS":
+        return { questions: [{ text: "论文采用了什么方法？" }, { text: "关键证据如何支持该方法？" }, { text: "该方法对结论有什么影响？" }] };
+      case "GENERATE_GUIDED_FEEDBACK":
+        return {
+          status: quote ? "SUCCESS" : "INSUFFICIENT_EVIDENCE",
+          summary: "回答已结合当前问题和论文上下文生成点评。",
+          omissions: [],
+          reference_answer: quote || "当前上下文不足以确认答案。",
+          claims: quote
+            ? [{ text: `论文上下文指出：${quote}`, claim_type: "PAPER_FACT", context_span_id: contextId, evidence_quote_candidate: quote }]
+            : [{ text: "当前上下文不足以确认答案。", claim_type: "INSUFFICIENT_EVIDENCE", context_span_id: contextId, evidence_quote_candidate: "" }],
+        };
+      case "GENERATE_GUIDED_STAGE_SUMMARY":
+        return { key_mastery_points: ["能够根据论文原文说明方法流程"], major_weak_points: [], next_stage_hint: "V1.0 暂不开放 ANALYZE 和 TRANSFER 阶段。" };
+      default:
+        return {};
+    }
+  })();
+  return {
+    schema_version: "model-gateway.v1",
+    message_kind: "RESPONSE",
+    operation: request.operation as never,
+    output,
+  } as unknown as ModelGatewayResponse;
+}
+
 export function assertCandidateContextSpanIds(
   response: AnswerResponse,
   availableSpans: readonly ContextSpan[],
@@ -231,6 +274,12 @@ export class MockModelGateway implements ModelGateway {
         break;
       case "CONNECTION_TEST":
         response = connectionTest();
+        break;
+      case "GENERATE_GUIDED_DIRECTIONS":
+      case "GENERATE_GUIDED_QUESTIONS":
+      case "GENERATE_GUIDED_FEEDBACK":
+      case "GENERATE_GUIDED_STAGE_SUMMARY":
+        response = guidedResponse(request);
         break;
     }
 

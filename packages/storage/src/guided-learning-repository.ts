@@ -6,7 +6,10 @@ import type {
   GuidedLearningState,
   GuidedLearningTransitionActor,
 } from "../../contracts/dist/wave1/src/index.js";
-import type { GuidedLearningGenerationJobPayload } from "./types.js";
+import type {
+  GuidedLearningGenerationJobPayload,
+  GuidedLearningProviderConfig,
+} from "./types.js";
 
 type Row = Record<string, unknown>;
 
@@ -74,7 +77,14 @@ export class GuidedLearningStorageError extends Error {
 export class GuidedLearningSessionRepository {
   constructor(private readonly database: DatabaseSync) {}
 
-  create(session: GuidedLearningSession, job?: GuidedLearningJobWrite): void {
+  create(
+    session: GuidedLearningSession,
+    job?: GuidedLearningJobWrite,
+    providerConfig: GuidedLearningProviderConfig = {
+      provider: "MOCK",
+      fixture_id: "guided-learning-v1",
+    },
+  ): void {
     this.transaction(() => {
       this.database
         .prepare(
@@ -100,6 +110,18 @@ export class GuidedLearningSessionRepository {
           session.updated_at,
         );
       this.replaceProjection(session);
+      this.database
+        .prepare(
+          `INSERT INTO guided_learning_provider_configs
+             (session_id, provider_config_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(
+          session.session_id,
+          JSON.stringify(providerConfig),
+          session.created_at,
+          session.updated_at,
+        );
       if (job) this.insertJob(job);
     });
   }
@@ -112,6 +134,17 @@ export class GuidedLearningSessionRepository {
       .get(sessionId) as Row | undefined;
     if (!row) return undefined;
     return JSON.parse(String(row.snapshot_json)) as GuidedLearningSession;
+  }
+
+  getProviderConfig(sessionId: string): GuidedLearningProviderConfig {
+    const row = this.database
+      .prepare(
+        "SELECT provider_config_json FROM guided_learning_provider_configs WHERE session_id = ?",
+      )
+      .get(sessionId) as Row | undefined;
+    if (!row)
+      return { provider: "MOCK", fixture_id: "guided-learning-v1" };
+    return JSON.parse(String(row.provider_config_json)) as GuidedLearningProviderConfig;
   }
 
   save(

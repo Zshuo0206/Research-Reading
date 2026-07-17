@@ -63,20 +63,42 @@ async function runGeneration(
   if (pages.length === 0) throw new GuidedLearningWorkerError("NOT_FOUND", "Document version has no canonical pages");
   const contexts = contextSpans(payload.document_version_id, pages);
   let next: GuidedLearningSession;
+  const isMock = payload.provider_config.provider === "MOCK";
   switch (payload.operation) {
     case "GUIDED_LEARNING_DIRECTION_GENERATION":
-      await invokeQuestionPlan(input.gateway, payload, contexts);
-      next = withDirections(session);
+      if (isMock) await invokeQuestionPlan(input.gateway, payload, contexts);
+      next = isMock
+        ? withDirections(session)
+        : withModelDirections(
+            session,
+            await invokeGuided(input.gateway, "GENERATE_GUIDED_DIRECTIONS", payload, contexts, session),
+          );
       break;
     case "GUIDED_LEARNING_QUESTION_GENERATION":
-      next = withQuestions(session, await invokeQuestionPlan(input.gateway, payload, contexts));
+      next = isMock
+        ? withQuestions(session, await invokeQuestionPlan(input.gateway, payload, contexts))
+        : withModelQuestions(
+            session,
+            await invokeGuided(input.gateway, "GENERATE_GUIDED_QUESTIONS", payload, contexts, session),
+          );
       break;
     case "GUIDED_LEARNING_FEEDBACK_GENERATION":
-      next = withFeedback(session, payload, await invokeAnswer(input.gateway, payload, contexts, currentQuestion(session)), contexts);
+      next = isMock
+        ? withFeedback(session, payload, await invokeAnswer(input.gateway, payload, contexts, currentQuestion(session)), contexts)
+        : withModelFeedback(
+            session,
+            payload,
+            await invokeGuided(input.gateway, "GENERATE_GUIDED_FEEDBACK", payload, contexts, session),
+            contexts,
+          );
       break;
     case "GUIDED_LEARNING_STAGE_SUMMARY_GENERATION":
-      await invokeQuestionPlan(input.gateway, payload, contexts);
-      next = withSummary(session);
+      next = isMock
+        ? withSummary(session)
+        : withModelSummary(
+            session,
+            await invokeGuided(input.gateway, "GENERATE_GUIDED_STAGE_SUMMARY", payload, contexts, session),
+          );
       break;
   }
   next.session_revision = session.session_revision + 1;
@@ -96,6 +118,24 @@ function withDirections(session: GuidedLearningSession): GuidedLearningSession {
   });
 }
 
+function withModelDirections(session: GuidedLearningSession, output: Value): GuidedLearningSession {
+  const directions = Array.isArray(output.directions) ? output.directions : [];
+  if (directions.length < 2 || directions.length > 3)
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model directions must contain 2 to 3 items");
+  return transition(session, "DIRECTIONS_READY", (next) => {
+    next.candidate_directions = directions.map((item, index) => {
+      if (!isRecord(item) || typeof item.title !== "string" || typeof item.description !== "string" || typeof item.selection_basis !== "string")
+        throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model direction output is malformed");
+      return {
+        direction_id: `direction_${session.session_id}_${index + 1}`,
+        title: item.title,
+        description: item.description,
+        selection_basis: item.selection_basis,
+      };
+    });
+  });
+}
+
 function withQuestions(session: GuidedLearningSession, plan: Value): GuidedLearningSession {
   const plannedQuestions = Array.isArray(plan.questions) ? plan.questions : [];
   const firstPrompt = isRecord(plannedQuestions[0]) && typeof plannedQuestions[0].text === "string" ? plannedQuestions[0].text : `请说明学习目标“${session.learning_goal}”对应的方法核心环节及其作用。`;
@@ -108,6 +148,28 @@ function withQuestions(session: GuidedLearningSession, plan: Value): GuidedLearn
       status: index === 0 ? "ACTIVE" : "UNSEEN",
       confirmation_status: "PENDING",
     }));
+    next.current_stage_id = "UNDERSTAND";
+    next.current_question_order = 1;
+  });
+}
+
+function withModelQuestions(session: GuidedLearningSession, output: Value): GuidedLearningSession {
+  const questions = Array.isArray(output.questions) ? output.questions : [];
+  if (questions.length < 3 || questions.length > 7)
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model questions must contain 3 to 7 items");
+  return transition(session, "QUESTIONS_READY", (next) => {
+    next.questions = questions.map((item, index) => {
+      if (!isRecord(item) || typeof item.text !== "string" || !item.text.trim())
+        throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model question output is malformed");
+      return {
+        question_id: `question_${session.session_id}_${index + 1}`,
+        order: index + 1,
+        stage_id: "UNDERSTAND",
+        prompt: item.text,
+        status: index === 0 ? "ACTIVE" : "UNSEEN",
+        confirmation_status: "PENDING",
+      };
+    });
     next.current_stage_id = "UNDERSTAND";
     next.current_question_order = 1;
   });
@@ -147,6 +209,86 @@ function withFeedback(session: GuidedLearningSession, payload: GuidedLearningGen
   });
 }
 
+function withModelFeedback(
+  session: GuidedLearningSession,
+  payload: GuidedLearningGenerationJobPayload,
+  output: Value,
+  contexts: Value[],
+): GuidedLearningSession {
+  const current = currentQuestion(session);
+  const rawClaims = Array.isArray(output.claims) ? output.claims : [];
+  if (!rawClaims.length) throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model feedback has no claims");
+  if (output.status !== "SUCCESS" && output.status !== "INSUFFICIENT_EVIDENCE")
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model feedback status is invalid", false);
+  const resolved = rawClaims.map((claim) => resolveClaim(claim, contexts, payload.document_version_id));
+  const evidenceByKey = new Map<string, Value>();
+  for (const item of resolved) {
+    if (item.evidence) {
+      const key = `${item.evidence.context_span_id}:${item.evidence.char_start}:${item.evidence.char_end}:${item.evidence.quote}`;
+      evidenceByKey.set(key, item.evidence);
+    }
+  }
+  const evidence = [...evidenceByKey.values()];
+  const evidenceIdByKey = new Map(
+    [...evidenceByKey.entries()].map(([key, value]) => [key, String(value.evidence_span_id)]),
+  );
+  const claims = resolved.map((item) => ({
+    text: item.text,
+    claim_type: item.claim_type,
+    evidence_refs: item.evidence
+      ? [evidenceIdByKey.get(`${item.evidence.context_span_id}:${item.evidence.char_start}:${item.evidence.char_end}:${item.evidence.quote}`) as string]
+      : [],
+  }));
+  if (output.status === "INSUFFICIENT_EVIDENCE" && claims.some((claim) => claim.claim_type !== "INSUFFICIENT_EVIDENCE"))
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "INSUFFICIENT_EVIDENCE feedback cannot contain supported claims", false);
+  const safeClaims = claims.length ? claims : [{ text: "当前上下文不足以确认答案。", claim_type: "INSUFFICIENT_EVIDENCE", evidence_refs: [] }];
+  const omissions = Array.isArray(output.omissions)
+    ? output.omissions.filter((entry: unknown): entry is string => typeof entry === "string").slice(0, 20)
+    : undefined;
+  if (typeof output.summary !== "string" || typeof output.reference_answer !== "string" || !omissions)
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model feedback output is malformed", false);
+  return transition(session, "FEEDBACK_READY", (next) => {
+    const question = currentQuestion(next as unknown as GuidedLearningSession);
+    question.status = "FEEDBACK_READY";
+    question.feedback = { summary: output.summary, omissions };
+    question.reference_answer = { text: output.reference_answer, claims: safeClaims };
+    question.evidence = evidence;
+    if (current.question_id !== question.question_id || payload.question_id !== question.question_id)
+      throw new GuidedLearningWorkerError("REVISION_CONFLICT", "Feedback question pointer changed");
+  });
+}
+
+function withModelSummary(session: GuidedLearningSession, output: Value): GuidedLearningSession {
+  const cleanList = (value: unknown, required: boolean): string[] | undefined => {
+    if (!Array.isArray(value)) return undefined;
+    const result = value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim().slice(0, 1000))
+      .filter(Boolean)
+      .slice(0, 20);
+    return required && result.length === 0 ? undefined : result;
+  };
+  const points = cleanList(output.key_mastery_points, true);
+  const weakPoints = cleanList(output.major_weak_points, false);
+  const nextStageHintValue: unknown = output.next_stage_hint;
+  const nextStageHint = typeof nextStageHintValue === "string" ? nextStageHintValue.trim().slice(0, 2000) : undefined;
+  if (!points || !weakPoints || !nextStageHint)
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model summary output is malformed");
+  return transition(session, "SUMMARY_READY", (next) => {
+    const questions = (next.questions as unknown as GuidedLearningSession["questions"] | undefined) ?? [];
+    next.stage_summary = {
+      stage_id: "UNDERSTAND", status: "GENERATED",
+      completed_question_orders: questions.filter((question) => question.status === "CONFIRMED").map((question) => question.order),
+      skipped_question_orders: questions.filter((question) => question.status === "SKIPPED").map((question) => question.order),
+      key_mastery_points: points,
+      major_weak_points: weakPoints,
+      next_stage_hint: nextStageHint,
+    };
+    const route = next.route as { stages?: Value[] } | undefined;
+    if (route?.stages?.[0]) route.stages[0].status = "COMPLETED";
+  });
+}
+
 function withSummary(session: GuidedLearningSession): GuidedLearningSession {
   return transition(session, "SUMMARY_READY", (next) => {
     const questions = (next.questions as GuidedLearningSession["questions"] | undefined) ?? [];
@@ -179,6 +321,150 @@ async function invokeQuestionPlan(gateway: GuidedLearningWorkerModelGateway, pay
   return extractOutput(response, "GENERATE_QUESTION_PLAN");
 }
 
+async function invokeGuided(
+  gateway: GuidedLearningWorkerModelGateway,
+  operation: "GENERATE_GUIDED_DIRECTIONS" | "GENERATE_GUIDED_QUESTIONS" | "GENERATE_GUIDED_FEEDBACK" | "GENERATE_GUIDED_STAGE_SUMMARY",
+  payload: GuidedLearningGenerationJobPayload,
+  contexts: Value[],
+  session: GuidedLearningSession,
+): Promise<Value> {
+  const documentMetadata = {
+    document_version_id: payload.document_version_id,
+    page_count: contexts.length,
+  };
+  let sessionInput: Value;
+  switch (operation) {
+    case "GENERATE_GUIDED_DIRECTIONS":
+      sessionInput = buildDirectionsInput(payload, contexts, documentMetadata);
+      break;
+    case "GENERATE_GUIDED_QUESTIONS":
+      sessionInput = buildQuestionsInput(session, payload, contexts, documentMetadata);
+      break;
+    case "GENERATE_GUIDED_FEEDBACK":
+      sessionInput = buildFeedbackInput(session, payload, contexts, documentMetadata);
+      break;
+    case "GENERATE_GUIDED_STAGE_SUMMARY":
+      sessionInput = buildSummaryInput(session, payload, contexts, documentMetadata);
+      break;
+  }
+  const response = await invokeGateway(gateway, {
+    schema_version: "model-gateway.v1",
+    message_kind: "REQUEST",
+    operation,
+    provider_config: payload.provider_config,
+    input: sessionInput,
+  });
+  return extractOutput(response, operation);
+}
+
+function buildDirectionsInput(
+  payload: GuidedLearningGenerationJobPayload,
+  contexts: Value[],
+  documentMetadata: Value,
+): Value {
+  return {
+    learning_goal: payload.learning_goal,
+    document_metadata: documentMetadata,
+    context_spans: contexts,
+  };
+}
+
+function buildQuestionsInput(
+  session: GuidedLearningSession,
+  payload: GuidedLearningGenerationJobPayload,
+  contexts: Value[],
+  documentMetadata: Value,
+): Value {
+  return {
+    learning_goal: payload.learning_goal,
+    selected_direction: selectedDirection(session, payload),
+    document_metadata: documentMetadata,
+    context_spans: contexts,
+  };
+}
+
+function buildFeedbackInput(
+  session: GuidedLearningSession,
+  payload: GuidedLearningGenerationJobPayload,
+  contexts: Value[],
+  documentMetadata: Value,
+): Value {
+  const question = currentQuestion(session);
+  const questionValue = question as Value;
+  if (typeof questionValue.user_answer !== "string" || !questionValue.user_answer.trim())
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Current answer is unavailable", false);
+  return {
+    learning_goal: payload.learning_goal,
+    selected_direction: selectedDirection(session, payload),
+    current_question: String(questionValue.prompt),
+    current_question_order: Number(questionValue.order),
+    user_answer: questionValue.user_answer,
+    previous_question_history: questionHistory(session, false),
+    document_metadata: documentMetadata,
+    context_spans: contexts,
+  };
+}
+
+function buildSummaryInput(
+  session: GuidedLearningSession,
+  payload: GuidedLearningGenerationJobPayload,
+  contexts: Value[],
+  documentMetadata: Value,
+): Value {
+  const questions = session.questions ?? [];
+  return {
+    learning_goal: payload.learning_goal,
+    selected_direction: selectedDirection(session, payload),
+    document_metadata: documentMetadata,
+    question_history: questionHistory(session, true),
+    completed_question_orders: questions.filter((item) => item.status === "CONFIRMED").map((item) => item.order),
+    skipped_question_orders: questions.filter((item) => item.status === "SKIPPED").map((item) => item.order),
+    context_spans: contexts,
+  };
+}
+
+function selectedDirection(
+  session: GuidedLearningSession,
+  payload: GuidedLearningGenerationJobPayload,
+): Value {
+  const directionId = payload.selected_direction_id;
+  if (typeof directionId !== "string")
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "selected_direction_id is required", false);
+  const direction = session.candidate_directions.find((item) => item.direction_id === directionId);
+  if (!direction)
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "selected_direction_id does not match a Session direction", false);
+  return {
+    direction_id: direction.direction_id,
+    title: direction.title,
+    description: direction.description,
+    selection_basis: direction.selection_basis,
+  };
+}
+
+function questionHistory(session: GuidedLearningSession, includeCurrent: boolean): Value[] {
+  return (session.questions ?? [])
+    .filter((item) => includeCurrent || item.status === "CONFIRMED" || item.status === "SKIPPED")
+    .map((item) => {
+      const value = item as unknown as Value;
+      const feedback = isRecord(value.feedback) ? value.feedback : undefined;
+      const reference = isRecord(value.reference_answer) ? value.reference_answer : undefined;
+      return {
+        question_id: item.question_id,
+        question_order: item.order,
+        question: item.prompt,
+        status: item.status,
+        user_answer: typeof value.user_answer === "string" ? value.user_answer : null,
+        skipped: item.status === "SKIPPED",
+        skip_reason: typeof value.skip_reason === "string" ? value.skip_reason : null,
+        feedback_summary: typeof feedback?.summary === "string" ? feedback.summary : null,
+        feedback_omissions: Array.isArray(feedback?.omissions)
+          ? feedback.omissions.filter((entry): entry is string => typeof entry === "string")
+          : [],
+        reference_answer: typeof reference?.text === "string" ? reference.text : null,
+      };
+    });
+}
+
 async function invokeAnswer(gateway: GuidedLearningWorkerModelGateway, payload: GuidedLearningGenerationJobPayload, contexts: Value[], question: Value): Promise<Value> {
   const response = await invokeGateway(gateway, {
     schema_version: "model-gateway.v1", message_kind: "REQUEST", operation: "GENERATE_ANSWER", provider_config: payload.provider_config,
@@ -196,6 +482,52 @@ function extractOutput(value: unknown, operation: string): Value {
   if (!isRecord(value) || value.schema_version !== "model-gateway.v1" || value.message_kind !== "RESPONSE" || value.operation !== operation || !isRecord(value.output))
     throw new GuidedLearningWorkerError("VALIDATION_FAILED", `Model response for ${operation} is invalid`, false);
   return value.output;
+}
+
+function resolveClaim(
+  claim: unknown,
+  contexts: Value[],
+  documentVersionId: string,
+): { text: string; claim_type: string; evidence?: Value } {
+  if (!isRecord(claim) || typeof claim.text !== "string" || typeof claim.claim_type !== "string")
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model claim output is malformed");
+  if (!["PAPER_FACT", "AUTHOR_CLAIM", "AGENT_INFERENCE", "INSUFFICIENT_EVIDENCE"].includes(claim.claim_type))
+    throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model claim_type is invalid");
+  if (claim.claim_type === "INSUFFICIENT_EVIDENCE")
+    return { text: claim.text, claim_type: "INSUFFICIENT_EVIDENCE" };
+  const contextId = typeof claim.context_span_id === "string" ? claim.context_span_id : "";
+  const candidate = contexts.find((item) => item.context_span_id === contextId);
+  const quote = typeof claim.evidence_quote_candidate === "string" ? claim.evidence_quote_candidate : "";
+  if (!candidate || String(candidate.document_version_id) !== documentVersionId || !quote)
+    return { text: claim.text, claim_type: "INSUFFICIENT_EVIDENCE" };
+  const pageText = Array.from(String(candidate.text));
+  const quotePoints = Array.from(quote);
+  if (quotePoints.length < 3 || quotePoints.length > 1000)
+    return { text: claim.text, claim_type: "INSUFFICIENT_EVIDENCE" };
+  const matches: number[] = [];
+  for (let index = 0; index <= pageText.length - quotePoints.length; index++) {
+    if (quotePoints.every((point, offset) => pageText[index + offset] === point)) matches.push(index);
+  }
+  if (matches.length !== 1)
+    return { text: claim.text, claim_type: "INSUFFICIENT_EVIDENCE" };
+  const start = matches[0];
+  const evidenceId = `evidence_guided_${createHash("sha256").update(`${contextId}:${start}:${quote}`).digest("hex").slice(0, 24)}`;
+  return {
+    text: claim.text,
+    claim_type: claim.claim_type,
+    evidence: {
+      evidence_span_id: evidenceId,
+      context_span_id: contextId,
+      document_version_id: String(candidate.document_version_id),
+      page_number: Number(candidate.page_number),
+      page_text_sha256: String(candidate.page_text_sha256),
+      extraction_profile_version: String(candidate.extraction_profile_version),
+      char_start: start,
+      char_end: start + quotePoints.length,
+      quote,
+      verification_status: "VERIFIED",
+    },
+  };
 }
 
 function parsePayload(value: unknown, operation: GuidedLearningJobKind): GuidedLearningGenerationJobPayload {

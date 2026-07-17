@@ -5,6 +5,10 @@ import {
   MockModelGateway,
   OpenAICompatibleByokGateway,
 } from "../../../packages/model-gateway/dist/index.js";
+import type {
+  ByokGatewayLogger,
+  HttpClient,
+} from "../../../packages/model-gateway/dist/index.js";
 import {
   RuntimeSecretResolver,
   SessionMemorySecretStore,
@@ -46,13 +50,21 @@ export function createWorkerRuntime(
   options: {
     documentImportHandler?: JobHandler;
     guidedLearningGateway?: GuidedLearningWorkerModelGateway;
+    byokHttpClient?: HttpClient;
+    byokEnvironment?: Readonly<Record<string, string | undefined>>;
+    byokLogger?: ByokGatewayLogger;
   } = {},
 ): WorkerRuntime {
   const database = openDatabase(databasePath, { migrationsDirectory });
   const storage = new StorageRepository(database);
   const mockGateway = new MockModelGateway();
   const byokGateway = new OpenAICompatibleByokGateway(
-    new RuntimeSecretResolver(new SessionMemorySecretStore()),
+    new RuntimeSecretResolver(
+      new SessionMemorySecretStore(),
+      options.byokEnvironment ?? process.env,
+    ),
+    options.byokHttpClient ?? fetch,
+    options.byokLogger,
   );
   const gateway = {
     invoke: (request: unknown) => {
@@ -62,8 +74,7 @@ export function createWorkerRuntime(
         ...(request as Record<string, unknown>),
         runtime_secret_ref: {
           kind: "ENVIRONMENT",
-          name:
-            process.env.WORKFLOW_BYOK_SECRET_NAME ?? "WORKFLOW_BYOK_API_KEY",
+          name: "WORKFLOW_BYOK_API_KEY",
         },
       } as never);
     },

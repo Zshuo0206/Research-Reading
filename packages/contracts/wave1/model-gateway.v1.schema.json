@@ -9,6 +9,18 @@
     { "$ref": "#/$defs/answer_byok_request" },
     { "$ref": "#/$defs/answer_mock_request" },
     { "$ref": "#/$defs/answer_response" },
+    { "$ref": "#/$defs/guided_directions_byok_request" },
+    { "$ref": "#/$defs/guided_directions_mock_request" },
+    { "$ref": "#/$defs/guided_directions_response" },
+    { "$ref": "#/$defs/guided_questions_byok_request" },
+    { "$ref": "#/$defs/guided_questions_mock_request" },
+    { "$ref": "#/$defs/guided_questions_response" },
+    { "$ref": "#/$defs/guided_feedback_byok_request" },
+    { "$ref": "#/$defs/guided_feedback_mock_request" },
+    { "$ref": "#/$defs/guided_feedback_response" },
+    { "$ref": "#/$defs/guided_summary_byok_request" },
+    { "$ref": "#/$defs/guided_summary_mock_request" },
+    { "$ref": "#/$defs/guided_summary_response" },
     { "$ref": "#/$defs/connection_test_byok_request" },
     { "$ref": "#/$defs/connection_test_mock_request" },
     { "$ref": "#/$defs/connection_test_response" }
@@ -170,6 +182,72 @@
         { "$ref": "#/$defs/answer_insufficient_output" }
       ]
     },
+    "guided_generation_input": {
+      "type": "object",
+      "required": ["learning_goal", "document_metadata", "context_spans"],
+      "properties": {
+        "learning_goal": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "document_metadata": { "$ref": "#/$defs/document_metadata" },
+        "context_spans": { "$ref": "#/$defs/context_spans" },
+        "selected_direction_id": { "type": "string", "maxLength": 200 },
+        "selected_direction": { "type": "object", "required": ["direction_id", "title", "description", "selection_basis"], "properties": { "direction_id": { "type": "string", "maxLength": 200 }, "title": { "type": "string", "maxLength": 200 }, "description": { "type": "string", "maxLength": 1000 }, "selection_basis": { "type": "string", "maxLength": 1000 } }, "additionalProperties": false },
+        "current_question": { "type": "string", "maxLength": 2000 },
+        "current_question_order": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "user_answer": { "type": "string", "maxLength": 10000 },
+        "previous_question_history": { "type": "array", "items": { "$ref": "#/$defs/question_history_item" } },
+        "question_history": { "type": "array", "items": { "$ref": "#/$defs/question_history_item" } },
+        "completed_question_orders": { "type": "array", "maxItems": 20, "items": { "type": "integer", "minimum": 1 } },
+        "skipped_question_orders": { "type": "array", "maxItems": 20, "items": { "type": "integer", "minimum": 1 } }
+      },
+      "additionalProperties": false
+    },
+    "question_history_item": {
+      "type": "object",
+      "required": ["question_id", "question_order", "question", "status", "user_answer", "skipped", "feedback_summary", "feedback_omissions", "reference_answer"],
+      "properties": {
+        "question_id": { "type": "string", "maxLength": 200 },
+        "question_order": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "question": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "maxLength": 100 },
+        "user_answer": { "type": ["string", "null"], "maxLength": 10000 },
+        "skipped": { "type": "boolean" },
+        "skip_reason": { "type": ["string", "null"], "maxLength": 200 },
+        "feedback_summary": { "type": ["string", "null"], "maxLength": 2000 },
+        "feedback_omissions": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 500 } },
+        "reference_answer": { "type": ["string", "null"], "maxLength": 5000 }
+      },
+      "additionalProperties": false
+    },
+    "guided_direction_output": {
+      "type": "object",
+      "required": ["directions"],
+      "properties": { "directions": { "type": "array", "minItems": 2, "maxItems": 3, "items": { "type": "object", "required": ["title", "description", "selection_basis"], "properties": { "title": { "type": "string", "minLength": 1, "maxLength": 200 }, "description": { "type": "string", "minLength": 1, "maxLength": 1000 }, "selection_basis": { "type": "string", "minLength": 1, "maxLength": 1000 } }, "additionalProperties": false } } },
+      "additionalProperties": false
+    },
+    "guided_question_output": {
+      "type": "object",
+      "required": ["questions"],
+      "properties": { "questions": { "type": "array", "minItems": 3, "maxItems": 7, "items": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string", "minLength": 1, "maxLength": 1000 } }, "additionalProperties": false } } },
+      "additionalProperties": false
+    },
+    "guided_feedback_output": {
+      "type": "object",
+      "required": ["status", "summary", "omissions", "reference_answer", "claims"],
+      "properties": {
+        "status": { "enum": ["SUCCESS", "INSUFFICIENT_EVIDENCE"] },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "omissions": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 500 } },
+        "reference_answer": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "claims": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "object", "required": ["text", "claim_type", "context_span_id", "evidence_quote_candidate"], "properties": { "text": { "type": "string", "minLength": 1, "maxLength": 2000 }, "claim_type": { "enum": ["PAPER_FACT", "AUTHOR_CLAIM", "AGENT_INFERENCE", "INSUFFICIENT_EVIDENCE"] }, "context_span_id": { "type": "string", "pattern": "^context_[A-Za-z0-9_-]+$" }, "evidence_quote_candidate": { "type": "string", "maxLength": 2000 } }, "additionalProperties": false } }
+      },
+      "additionalProperties": false
+    },
+    "guided_summary_output": {
+      "type": "object",
+      "required": ["key_mastery_points", "major_weak_points", "next_stage_hint"],
+      "properties": { "key_mastery_points": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string", "minLength": 1, "maxLength": 1000 } }, "major_weak_points": { "type": "array", "maxItems": 20, "items": { "type": "string", "minLength": 1, "maxLength": 1000 } }, "next_stage_hint": { "type": "string", "minLength": 1, "maxLength": 2000 } },
+      "additionalProperties": false
+    },
     "connection_test_input": {
       "type": "object",
       "required": ["probe"],
@@ -276,6 +354,18 @@
       },
       "additionalProperties": false
     },
+    "guided_directions_byok_request": { "type": "object", "required": ["schema_version", "message_kind", "operation", "provider_config", "runtime_secret_ref", "input"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "REQUEST" }, "operation": { "const": "GENERATE_GUIDED_DIRECTIONS" }, "provider_config": { "$ref": "#/$defs/byok_provider_config" }, "runtime_secret_ref": { "$ref": "#/$defs/runtime_secret_ref" }, "input": { "$ref": "#/$defs/guided_generation_input" } }, "additionalProperties": false },
+    "guided_directions_mock_request": { "type": "object", "required": ["schema_version", "message_kind", "operation", "provider_config", "input"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "REQUEST" }, "operation": { "const": "GENERATE_GUIDED_DIRECTIONS" }, "provider_config": { "$ref": "#/$defs/mock_provider_config" }, "input": { "$ref": "#/$defs/guided_generation_input" } }, "additionalProperties": false },
+    "guided_directions_response": { "type": "object", "required": ["schema_version", "message_kind", "operation", "output"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "RESPONSE" }, "operation": { "const": "GENERATE_GUIDED_DIRECTIONS" }, "output": { "$ref": "#/$defs/guided_direction_output" } }, "additionalProperties": false },
+    "guided_questions_byok_request": { "type": "object", "required": ["schema_version", "message_kind", "operation", "provider_config", "runtime_secret_ref", "input"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "REQUEST" }, "operation": { "const": "GENERATE_GUIDED_QUESTIONS" }, "provider_config": { "$ref": "#/$defs/byok_provider_config" }, "runtime_secret_ref": { "$ref": "#/$defs/runtime_secret_ref" }, "input": { "$ref": "#/$defs/guided_generation_input" } }, "additionalProperties": false },
+    "guided_questions_mock_request": { "type": "object", "required": ["schema_version", "message_kind", "operation", "provider_config", "input"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "REQUEST" }, "operation": { "const": "GENERATE_GUIDED_QUESTIONS" }, "provider_config": { "$ref": "#/$defs/mock_provider_config" }, "input": { "$ref": "#/$defs/guided_generation_input" } }, "additionalProperties": false },
+    "guided_questions_response": { "type": "object", "required": ["schema_version", "message_kind", "operation", "output"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "RESPONSE" }, "operation": { "const": "GENERATE_GUIDED_QUESTIONS" }, "output": { "$ref": "#/$defs/guided_question_output" } }, "additionalProperties": false },
+    "guided_feedback_byok_request": { "type": "object", "required": ["schema_version", "message_kind", "operation", "provider_config", "runtime_secret_ref", "input"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "REQUEST" }, "operation": { "const": "GENERATE_GUIDED_FEEDBACK" }, "provider_config": { "$ref": "#/$defs/byok_provider_config" }, "runtime_secret_ref": { "$ref": "#/$defs/runtime_secret_ref" }, "input": { "$ref": "#/$defs/guided_generation_input" } }, "additionalProperties": false },
+    "guided_feedback_mock_request": { "type": "object", "required": ["schema_version", "message_kind", "operation", "provider_config", "input"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "REQUEST" }, "operation": { "const": "GENERATE_GUIDED_FEEDBACK" }, "provider_config": { "$ref": "#/$defs/mock_provider_config" }, "input": { "$ref": "#/$defs/guided_generation_input" } }, "additionalProperties": false },
+    "guided_feedback_response": { "type": "object", "required": ["schema_version", "message_kind", "operation", "output"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "RESPONSE" }, "operation": { "const": "GENERATE_GUIDED_FEEDBACK" }, "output": { "$ref": "#/$defs/guided_feedback_output" } }, "additionalProperties": false },
+    "guided_summary_byok_request": { "type": "object", "required": ["schema_version", "message_kind", "operation", "provider_config", "runtime_secret_ref", "input"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "REQUEST" }, "operation": { "const": "GENERATE_GUIDED_STAGE_SUMMARY" }, "provider_config": { "$ref": "#/$defs/byok_provider_config" }, "runtime_secret_ref": { "$ref": "#/$defs/runtime_secret_ref" }, "input": { "$ref": "#/$defs/guided_generation_input" } }, "additionalProperties": false },
+    "guided_summary_mock_request": { "type": "object", "required": ["schema_version", "message_kind", "operation", "provider_config", "input"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "REQUEST" }, "operation": { "const": "GENERATE_GUIDED_STAGE_SUMMARY" }, "provider_config": { "$ref": "#/$defs/mock_provider_config" }, "input": { "$ref": "#/$defs/guided_generation_input" } }, "additionalProperties": false },
+    "guided_summary_response": { "type": "object", "required": ["schema_version", "message_kind", "operation", "output"], "properties": { "schema_version": { "const": "model-gateway.v1" }, "message_kind": { "const": "RESPONSE" }, "operation": { "const": "GENERATE_GUIDED_STAGE_SUMMARY" }, "output": { "$ref": "#/$defs/guided_summary_output" } }, "additionalProperties": false },
     "connection_test_byok_request": {
       "type": "object",
       "required": ["schema_version", "message_kind", "operation", "provider_config", "runtime_secret_ref", "input"],

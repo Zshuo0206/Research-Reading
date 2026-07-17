@@ -251,7 +251,11 @@ function createRequestBody(request: ByokRequest): Record<string, unknown> {
     };
   }
 
-  const input = JSON.stringify(request.input);
+  const input = JSON.stringify({
+    operation: request.operation,
+    output_requirements: guidedOutputInstructions(request.operation),
+    input: request.input,
+  });
   if (Array.from(input).length > request.provider_config.max_input_characters) {
     throw new ModelGatewayError(
       "INVALID_REQUEST",
@@ -264,13 +268,40 @@ function createRequestBody(request: ByokRequest): Record<string, unknown> {
       {
         role: "system",
         content:
-          "Return one JSON object only. Follow the requested draft schema and cite only supplied context_span_id values.",
+          "Return one JSON object only. Follow the operation-specific output_requirements exactly. Cite only supplied context_span_id values; do not add fields, Markdown, IDs, page numbers, offsets, hashes, or provider metadata.",
       },
       { role: "user", content: input },
     ],
     response_format: { type: "json_object" },
     max_tokens: request.provider_config.max_output_tokens,
   };
+}
+
+function guidedOutputInstructions(operation: ByokRequest["operation"]): Record<string, unknown> {
+  switch (operation) {
+    case "GENERATE_GUIDED_DIRECTIONS":
+      return {
+        shape: { directions: [{ title: "string", description: "string", selection_basis: "string" }] },
+        constraints: ["return 2 to 3 items", "do not return direction_id", "no Markdown", "no extra explanation"],
+      };
+    case "GENERATE_GUIDED_QUESTIONS":
+      return {
+        shape: { questions: [{ text: "string" }] },
+        constraints: ["return 3 to 7 open-ended questions", "progress from basic understanding to deeper reasoning", "use only supplied paper context", "do not return answers, IDs, Markdown, or extra explanation"],
+      };
+    case "GENERATE_GUIDED_FEEDBACK":
+      return {
+        shape: { status: "SUCCESS | INSUFFICIENT_EVIDENCE", summary: "string", omissions: ["string"], reference_answer: "string", claims: [{ text: "string", claim_type: "PAPER_FACT | AUTHOR_CLAIM | AGENT_INFERENCE | INSUFFICIENT_EVIDENCE", context_span_id: "string", evidence_quote_candidate: "string" }] },
+        constraints: ["supported claims must cite supplied context_span_id", "quote must be an exact continuous quote from that span", "never return page number, char offset, hash, or Markdown", "use INSUFFICIENT_EVIDENCE when reliable evidence is unavailable", "no extra fields"],
+      };
+    case "GENERATE_GUIDED_STAGE_SUMMARY":
+      return {
+        shape: { key_mastery_points: ["string"], major_weak_points: ["string"], next_stage_hint: "string" },
+        constraints: ["base the summary on question_history", "do not return scores or mastery levels", "do not return completed or skipped question orders", "do not open ANALYZE or TRANSFER", "no Markdown or extra explanation"],
+      };
+    default:
+      return { constraints: ["follow the model-gateway.v1 output schema", "no extra fields"] };
+  }
 }
 
 async function parseOutput(response: Response): Promise<unknown> {

@@ -8,6 +8,7 @@ import {
   GuidedLearningApiError,
   GuidedLearningApiClient,
   type Project,
+  type GuidedProviderConfig,
   type WorkflowJob,
 } from "./api.js";
 import {
@@ -20,6 +21,7 @@ import "./guided-learning.css";
 const api = new GuidedLearningApiClient();
 
 type Props = { onBack: () => void };
+type GuidedByokProvider = Exclude<GuidedProviderConfig, { provider: "MOCK" }>["provider"];
 type PendingAction =
   | GuidedLearningCommandName
   | "PROJECT"
@@ -41,6 +43,12 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
   );
   const [documentJob, setDocumentJob] = useState<WorkflowJob | null>(null);
   const [learningGoal, setLearningGoal] = useState("");
+  const [providerMode, setProviderMode] = useState<"MOCK" | "BYOK">("MOCK");
+  const [provider, setProvider] = useState<GuidedByokProvider>("OPENAI");
+  const [model, setModel] = useState("gpt-4o-mini");
+  const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
+  const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
+  const [pdfPage, setPdfPage] = useState<number | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(() =>
     readSessionId(),
   );
@@ -73,6 +81,7 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
         setProject({ project_id: value.project_id, name: "已恢复项目" });
         setDocumentVersionId(value.document_version_id);
         setLearningGoal(value.learning_goal);
+        setPdfPage(null);
         setPollError(null);
       })
       .catch((reason: unknown) => {
@@ -225,6 +234,9 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
         project_id: project.project_id,
         document_version_id: documentVersionId,
         learning_goal: learningGoal.trim(),
+        provider_config: providerMode === "MOCK"
+          ? { provider: "MOCK", fixture_id: "guided-learning-v1" }
+          : { provider, base_url: baseUrl, model, request_timeout_ms: 30000, max_input_characters: 200000, max_output_tokens: 2000 },
       });
       setSession(result.session);
       setSessionId(result.session.session_id);
@@ -233,6 +245,17 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
       setError(toUserMessage(reason));
     } finally {
       setPendingAction(null);
+    }
+  };
+
+  const testConnection = async () => {
+    if (providerMode === "MOCK") return setConnectionStatus("Mock 无需连接测试。");
+    setConnectionStatus("正在使用 Worker 环境 secret 测试连接……");
+    try {
+      const result = await api.testEnvironmentConnection({ provider, base_url: baseUrl, model, request_timeout_ms: 30000, max_input_characters: 200000, max_output_tokens: 2000 });
+      setConnectionStatus((result as { output?: { success?: boolean } }).output?.success ? "连接成功（未传输浏览器 key）。" : "连接失败，请检查服务端环境 secret。");
+    } catch (reason) {
+      setConnectionStatus(toUserMessage(reason));
     }
   };
 
@@ -393,6 +416,16 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
           learningGoal={learningGoal}
           setLearningGoal={setLearningGoal}
           createSession={createSession}
+          providerMode={providerMode}
+          setProviderMode={setProviderMode}
+          provider={provider}
+          setProvider={setProvider}
+          model={model}
+          setModel={setModel}
+          baseUrl={baseUrl}
+          setBaseUrl={setBaseUrl}
+          testConnection={testConnection}
+          connectionStatus={connectionStatus}
           busy={busy}
           documentReady={documentReady}
         />
@@ -403,6 +436,9 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
           answerDraft={answerDraft}
           setAnswerDraft={setAnswerDraft}
           pdfPreviewUrl={pdfPreviewUrl}
+          pdfContentUrl={api.documentContentUrl(session.document_version_id, pdfPage ?? undefined)}
+          pdfPage={pdfPage}
+          onEvidencePage={setPdfPage}
           pendingAction={pendingAction}
           selectDirection={selectDirection}
           startStage={startStage}
@@ -429,6 +465,16 @@ function PreparationPanel(props: {
   learningGoal: string;
   setLearningGoal: (value: string) => void;
   createSession: (event: React.FormEvent) => void;
+  providerMode: "MOCK" | "BYOK";
+  setProviderMode: (value: "MOCK" | "BYOK") => void;
+  provider: GuidedByokProvider;
+  setProvider: (value: GuidedByokProvider) => void;
+  model: string;
+  setModel: (value: string) => void;
+  baseUrl: string;
+  setBaseUrl: (value: string) => void;
+  testConnection: () => void;
+  connectionStatus: string | null;
   busy: boolean;
   documentReady: boolean;
 }) {
@@ -491,6 +537,23 @@ function PreparationPanel(props: {
       )}
       <form onSubmit={props.createSession} className="guided-learning-form">
         <label>
+          生成模式
+          <select value={props.providerMode} onChange={(event) => props.setProviderMode(event.target.value as "MOCK" | "BYOK")}>
+            <option value="MOCK">Mock（确定性）</option>
+            <option value="BYOK">BYOK（服务端环境 secret）</option>
+          </select>
+        </label>
+        {props.providerMode === "BYOK" && (
+          <>
+            <label>Provider<select value={props.provider} onChange={(event) => props.setProvider(event.target.value as GuidedByokProvider)}><option value="OPENAI">OpenAI</option><option value="GEMINI">Gemini</option><option value="GROQ">Groq</option><option value="OPENROUTER">OpenRouter</option><option value="CUSTOM_OPENAI_COMPATIBLE">Custom OpenAI Compatible</option></select></label>
+            <label>Model<input value={props.model} onChange={(event) => props.setModel(event.target.value)} /></label>
+            <label>HTTPS Endpoint<input value={props.baseUrl} onChange={(event) => props.setBaseUrl(event.target.value)} /></label>
+            <button type="button" onClick={props.testConnection} disabled={props.busy}>测试服务端环境连接</button>
+            {props.connectionStatus && <p className="guided-learning-meta">{props.connectionStatus}</p>}
+            <p className="guided-learning-meta">API key 不在浏览器中显示、输入或发送；API 与 Worker 使用 `WORKFLOW_BYOK_API_KEY`。</p>
+          </>
+        )}
+        <label>
           学习目标
           <textarea
             aria-label="Learning goal"
@@ -517,6 +580,9 @@ function SessionPanel(props: {
   answerDraft: string;
   setAnswerDraft: (value: string) => void;
   pdfPreviewUrl: string | null;
+  pdfContentUrl: string;
+  pdfPage: number | null;
+  onEvidencePage: (page: number) => void;
   pendingAction: PendingAction;
   selectDirection: (directionId: string) => void;
   startStage: () => void;
@@ -537,15 +603,15 @@ function SessionPanel(props: {
       <aside>
         <div className="guided-learning-card">
           <h3>论文原文</h3>
-          {props.pdfPreviewUrl ? (
+          {props.pdfPreviewUrl || props.pdfContentUrl ? (
             <iframe
               className="guided-learning-pdf"
               title="Imported PDF preview"
-              src={props.pdfPreviewUrl}
+              src={props.pdfPage ? `${props.pdfContentUrl}#page=${props.pdfPage}` : (props.pdfPreviewUrl ?? props.pdfContentUrl)}
             />
           ) : (
             <p className="guided-learning-meta">
-              刷新后保留服务端 Session；PDF 预览需重新选择本地文件。
+              正在读取服务端 PDF 内容。
             </p>
           )}
         </div>
@@ -794,6 +860,9 @@ function FeedbackPanel(
                 ? "已验证"
                 : "不可确认"}
             </p>
+            <button type="button" onClick={() => props.onEvidencePage(evidence.page_number)}>
+              查看第 {evidence.page_number} 页
+            </button>
           </article>
         ))}
       </div>

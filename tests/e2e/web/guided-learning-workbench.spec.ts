@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
-test("runs the Guided Learning UI through a real PDF Mock-shaped session and restores after refresh", async ({
+test("covers BYOK controls with a Mock Guided Learning UI flow and restores after refresh", async ({
   page,
 }) => {
   let state = "CREATED";
@@ -283,6 +283,10 @@ test("runs the Guided Learning UI through a real PDF Mock-shaped session and res
       path.join(process.cwd(), "tests/fixtures/pdf/synthetic-text.pdf"),
     );
   await expect(page.getByText("PDF 已就绪")).toBeVisible();
+  await page.getByLabel("生成模式").selectOption("BYOK");
+  await expect(page.getByText("API key 不在浏览器中显示、输入或发送")).toBeVisible();
+  await expect(page.getByRole("button", { name: "测试服务端环境连接" })).toBeVisible();
+  await page.getByLabel("生成模式").selectOption("MOCK");
   await page.getByLabel("Learning goal").fill("理解论文的方法设计和关键证据");
   await page
     .getByRole("button", { name: "创建 Guided Learning Session" })
@@ -299,7 +303,7 @@ test("runs the Guided Learning UI through a real PDF Mock-shaped session and res
     await expect(page.getByTestId("guided-learning-failure")).toBeVisible();
     await page.getByRole("button", { name: "重试生成" }).click();
     await expect(page.getByTestId("guided-feedback-panel")).toBeVisible();
-    await expect(page.getByText("第 1 页")).toBeVisible();
+    await expect(page.getByText("第 1 页", { exact: true })).toBeVisible();
     await expect(page.getByText("Canonical method text.")).toBeVisible();
     await page.getByRole("button", { name: "确认并进入下一题" }).click();
   }

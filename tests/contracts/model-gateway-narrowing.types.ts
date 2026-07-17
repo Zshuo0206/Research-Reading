@@ -19,6 +19,11 @@ export function inspectGatewayMessage(message: ModelGatewayEnvelope): string {
         return message.input.confirmed_question.text;
       case "CONNECTION_TEST":
         return String(message.input.probe);
+      case "GENERATE_GUIDED_DIRECTIONS":
+      case "GENERATE_GUIDED_QUESTIONS":
+      case "GENERATE_GUIDED_FEEDBACK":
+      case "GENERATE_GUIDED_STAGE_SUMMARY":
+        return message.input.learning_goal;
       default: {
         const unreachable: never = message;
         return unreachable;
@@ -39,6 +44,14 @@ export function inspectGatewayMessage(message: ModelGatewayEnvelope): string {
       return message.output.success
         ? message.output.model
         : message.output.error_category;
+    case "GENERATE_GUIDED_DIRECTIONS":
+      return message.output.directions[0].title;
+    case "GENERATE_GUIDED_QUESTIONS":
+      return message.output.questions[0].text;
+    case "GENERATE_GUIDED_FEEDBACK":
+      return message.output.summary;
+    case "GENERATE_GUIDED_STAGE_SUMMARY":
+      return message.output.next_stage_hint;
     default: {
       const unreachable: never = message;
       return unreachable;

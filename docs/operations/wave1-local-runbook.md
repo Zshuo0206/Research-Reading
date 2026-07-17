@@ -69,7 +69,9 @@ API 默认只监听 `127.0.0.1`。不要设置 `API_HOST=0.0.0.0`，也不要将
 
 真实 BYOK 只在本地人工验收时执行。必须由操作员安全提供 provider、HTTPS endpoint、model 和 API key；不要把 key 写入聊天、代码、提交、URL、SQLite 或日志。
 
-当前 Session Memory secret 仅用于当前 API 进程内的连接测试；API 与 Worker 不共享这段内存 secret。Worker 的真实生成路径使用运行时环境变量 `WORKFLOW_BYOK_API_KEY`，API 和 Worker 必须在各自进程中配置同一环境变量。当前 Guided Learning Job 仍固定使用 Mock，Web 输入 Session Key 不能完成真实 Guided Learning 生成；真实请求须经本地 API，不允许浏览器直连供应商。没有用户凭据时只能记录 `BLOCKED_BY_MISSING_USER_CREDENTIALS`，不能用 Mock 结果代替真实 BYOK 结果。
+当前 Session Memory secret 仅用于当前 API 进程内的开发连接测试；API 与 Worker 不共享这段内存 secret。真实 Guided Learning Job 使用运行时环境变量 `WORKFLOW_BYOK_API_KEY`，API 环境连接测试和 Worker 必须在各自进程中配置同一环境变量。Web 只提交 provider/base_url/model/limits，不提交 key、runtime_secret_ref 或环境变量名；真实请求须经本地 API，不允许浏览器直连供应商。Mock 仍可作为默认模式，但不能代替真实 BYOK 发布证据。没有用户凭据时只能记录 `BLOCKED_BY_MISSING_USER_CREDENTIALS`。
+
+自动化 Playwright 只覆盖 BYOK 控件和 Mock Guided Learning UI 流程（含刷新恢复）；它不会把 fake API route 伪装成真实外部 BYOK，真实浏览器 BYOK E2E 记录为 `BROWSER_REAL_BYOK_E2E_NOT_EXECUTED`。真实人工验收前，必须用用户提供的凭据在本地 API/Worker 进程完成连接测试和最小四 operation 生成闭环。
 
 ## 停止和清理
 

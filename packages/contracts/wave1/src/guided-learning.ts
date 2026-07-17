@@ -1506,7 +1506,8 @@ function validateQuestionFields(
       !has("feedback") ||
       !has("reference_answer") ||
       !Array.isArray(question.evidence) ||
-      question.evidence.length === 0 ||
+      (question.evidence.length === 0 &&
+        !isInsufficientReferenceAnswer(question.reference_answer)) ||
       has("skip_reason")
     )
       add(
@@ -1521,6 +1522,15 @@ function validateQuestionFields(
         path,
       );
   }
+}
+
+function isInsufficientReferenceAnswer(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.claims) || value.claims.length === 0)
+    return false;
+  return value.claims.every(
+    (claim) => isRecord(claim) && claim.claim_type === "INSUFFICIENT_EVIDENCE" &&
+      Array.isArray(claim.evidence_refs) && claim.evidence_refs.length === 0,
+  );
 }
 
 function validateSummary(
