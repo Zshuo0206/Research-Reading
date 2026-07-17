@@ -12,6 +12,8 @@
 
 ## 自动发布 Gate
 
+本次人工验收首先发现正式 `npm run worker` 入口只打印 `worker_platform_shell_ready` 后退出，未消费 SQLite Job 队列；这是 V1.0 发布阻断。已在本分支加入持久轮询与 graceful shutdown 修复，并重新执行以下自动化 Gate。
+
 | 检查 | 结果 |
 |---|---|
 | migration 001–006 / schema version 6 | 通过；全新 SQLite 测试覆盖，provider config 表存在 |
@@ -28,6 +30,7 @@
 | `npm run smoke` | 通过；loopback API/Worker/Web |
 | security scan | 通过；`--skip-audit` |
 | `git diff --check` | 通过 |
+| Worker loop 定向测试 | 通过；9/9 |
 
 PDF fixture SHA-256 保持：
 
@@ -35,7 +38,9 @@ PDF fixture SHA-256 保持：
 99e07b4ba995b7c90bd84628a5db55b71a4faa1f06d3714a5942741cd39a55f8
 ```
 
-自动化证据覆盖真实 PDF Mock 闭环、快速问答回归、Session 刷新/重启恢复、RETRY、EDIT_ANSWER、PDF content endpoint、Evidence 页码定位、provider config 白名单和 secret 边界。fake provider 只证明适配器与 Worker 链路，不等价于真实外部 BYOK。
+自动化证据覆盖真实 PDF Mock 闭环、快速问答回归、Session 刷新/重启恢复、RETRY、EDIT_ANSWER、PDF content endpoint、Evidence 页码定位、provider config 白名单和 secret 边界。Worker loop 定向测试覆盖顺序 `runOnce`、idle wait、stop 边界、当前 Job 完成、单次 close、smoke 和真实 SQLite Job 消费。fake provider 只证明适配器与 Worker 链路，不等价于真实外部 BYOK。
+
+Worker CLI 检查：构建后的正式 Worker ready 后保持运行，smoke 子进程立即以 code 0 退出。当前执行环境不是交互式控制台，无法注入真实键盘 `Ctrl+C`；等价的 AbortSignal graceful-stop、当前 Job 等待、单次 close 和 stopped 回调由 Worker loop 9/9 覆盖。真实用户终端仍需补做一次 `Ctrl+C` 人工确认。
 
 ## 真实 BYOK 与浏览器状态
 

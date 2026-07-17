@@ -1,4 +1,5 @@
 import { createWorkerRuntime } from "./runtime.js";
+import { runWorkerService } from "./worker-service.js";
 
 const runtime = createWorkerRuntime();
 const smoke =
@@ -14,18 +15,41 @@ console.log(
 );
 
 if (smoke) {
-  runtime.database.close();
-  process.exit(0);
+  await runWorkerService(runtime, { smoke: true });
+} else {
+  const stopController = new AbortController();
+  let stopSignal: string | undefined;
+  const requestStop = (signal: string) => {
+    if (stopSignal) return;
+    stopSignal = signal;
+    stopController.abort();
+  };
+  process.once("SIGINT", () => requestStop("SIGINT"));
+  process.once("SIGTERM", () => requestStop("SIGTERM"));
+
+  try {
+    await runWorkerService(runtime, {
+      signal: stopController.signal,
+      onStopped: () => {
+        console.log(
+          JSON.stringify({
+            event: "worker_platform_shell_stopped",
+            signal: stopSignal ?? "STOPPED",
+          }),
+        );
+      },
+    });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "worker_platform_shell_error",
+        error: safeErrorSummary(error),
+      }),
+    );
+    process.exitCode = 1;
+  }
 }
 
-if (!smoke) {
-  const shutdown = (signal: string) => {
-    runtime.database.close();
-    console.log(
-      JSON.stringify({ event: "worker_platform_shell_stopped", signal }),
-    );
-    process.exit(0);
-  };
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+function safeErrorSummary(error: unknown): { name: string } {
+  return { name: error instanceof Error ? error.name : "WorkerError" };
 }
