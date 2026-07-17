@@ -251,7 +251,7 @@ function createRequestBody(request: ByokRequest): Record<string, unknown> {
     };
   }
 
-  const input = JSON.stringify(request.input);
+  const input = JSON.stringify({ operation: request.operation, input: request.input });
   if (Array.from(input).length > request.provider_config.max_input_characters) {
     throw new ModelGatewayError(
       "INVALID_REQUEST",

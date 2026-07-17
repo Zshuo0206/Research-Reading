@@ -1,7 +1,7 @@
 # Current State
 
 最后更新：2026-07-16（Asia/Shanghai）
-状态：`WAVE_1_TECHNICAL_ACCEPTANCE_PASSED_RELEASE_BLOCKED`
+状态：`WAVE_1_TECHNICAL_ACCEPTANCE_PASSED_T-W1-017_IMPLEMENTING`
 
 产品需求基线：V1.0 产品定义已归档至
 `docs/product/versions/科研文献引导式学习平台_V1.0产品定义.md`，开发需求见
@@ -63,6 +63,7 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-014：`REVIEW`，已完成并进入 main；包含四类 Worker Job、原子入队、真实 PDF Mock 闭环和失败重试，仍待后续审查收口。
 - T-W1-015：`REVIEW`，已进入 main；包含 Guided Learning Web 入口、目标/PDF/Session 创建、轮询恢复、方向选择、逐题反馈、Evidence、重试和阶段总结，仍待真实 PDF 完整 E2E、BYOK 和产品验收。
 - T-W1-016：`REVIEW`，Mock 技术验收通过，发布状态为 `RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS`；固定 Mock provider、API/Worker secret 不共享、内容仍为固定模板、Evidence 尚未语义 grounding、PDF 刷新后 object URL 消失且无页码跳转，真实 BYOK 人工验收也因缺少用户凭据阻塞。
+- T-W1-017：`IMPLEMENTING`，已接入真实 BYOK-shaped Guided Generation、provider config migration、Worker 环境 secret、Evidence grounding、PDF content endpoint、刷新恢复和页码定位；真实外部 BYOK 人工验收因缺少用户凭据保持阻塞。
 - T-W1-005：保持 `DRAFT`；扩展后的双模式完整范围尚未进入 main；快速问答子集和 Guided Learning API/SQLite runtime 已存在，其余 Web 和完整产品验收仍待实施。
 - T-W1-006：保持 `DRAFT`；最小快速问答 Web 和 T-W1-015 Guided Learning Web 已存在，但其完整任务范围仍待实施。
 - 不据此改变其他任务或 Gate 的状态。

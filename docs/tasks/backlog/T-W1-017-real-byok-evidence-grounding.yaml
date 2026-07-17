@@ -1,0 +1,85 @@
+id: T-W1-017
+task_id: T-W1-017
+title: "Guided Learning V1.0 Real BYOK and Evidence Grounding"
+owner_role: primary-agent
+status: IMPLEMENTING
+wave: 1
+objective: "将 Guided Learning 从固定 Mock 生成扩展为受服务端 provider 配置和 Worker 环境 secret 保护的真实 BYOK 生成，并把模型声明的 Evidence 候选严格绑定到 canonical PDF 文本。"
+background: "T-W1-016 仅完成 Mock 技术验收；V1.0 发布因真实 provider、统一 Worker secret、模型驱动内容、语义 Evidence grounding 和 PDF 恢复/页码定位阻塞。"
+scope:
+  - "新增连续 migration 006 持久化非敏感 provider 配置；禁止持久化 API key、runtime_secret_ref、完整 prompt 或 provider 原始响应。"
+  - "实现 Guided Learning 四类真实生成 operation：directions、questions、feedback、stage summary。"
+  - "Worker 使用固定 WORKFLOW_BYOK_API_KEY 环境 secret；API/Worker 不共享 Session Memory secret。"
+  - "Evidence 由服务端根据本次 canonical context span、唯一 quote、页码、code-point offset、page hash 和 extraction profile 物化。"
+  - "增加 PDF document-version content endpoint、刷新恢复和 Evidence 页码定位。"
+out_of_scope:
+  - "OCR、扫描 PDF、复杂表格/公式、多篇论文、ANALYZE、TRANSFER、多用户、远程部署、知识图谱、写作辅助和协作。"
+dependencies:
+  - task_id: T-W1-016
+    reason: "依赖已合并的 Mock 技术验收和发布阻塞证据。"
+writable_paths:
+  - apps/api/migrations/006_guided_learning_provider_config.sql
+  - apps/api/src/**
+  - apps/worker/src/**
+  - apps/web/src/features/guided-learning/**
+  - packages/contracts/wave1/model-gateway.v1.schema.json
+  - packages/contracts/wave1/generated/model-gateway.v1.d.ts
+  - packages/contracts/wave1/src/**
+  - packages/model-gateway/src/**
+  - packages/storage/src/**
+  - tests/integration/guided-learning/byok.test.ts
+  - tests/integration/api/guided-learning-http.test.ts
+  - tests/integration/storage/sqlite-storage.test.ts
+  - tests/contracts/model-gateway-narrowing.types.ts
+  - tests/e2e/web/guided-learning-workbench.spec.ts
+  - docs/tasks/backlog/T-W1-017-real-byok-evidence-grounding.yaml
+  - docs/acceptance/wave1-real-byok-evidence-grounding.md
+  - docs/operations/wave1-local-runbook.md
+  - docs/CURRENT_STATE.md
+  - docs/devlog/2026-07-17.md
+read_only_paths:
+  - apps/api/migrations/001_wave1_minimum.sql
+  - apps/api/migrations/002_question_answer_workflow.sql
+  - apps/api/migrations/003_document_pages.sql
+  - apps/api/migrations/004_guided_learning_runtime.sql
+  - apps/api/migrations/005_guided_learning_worker_jobs.sql
+forbidden_paths:
+  - tests/fixtures/pdf/**/*.pdf
+  - README.md
+  - docs/product/**
+  - docs/contracts/**
+  - planning scripts
+contract_version: "guided-learning.v1 + model-gateway.v1 + api.v1"
+acceptance_criteria:
+  - "provider config 仅保存 provider/base_url/model/request_timeout_ms/max_input_characters/max_output_tokens，且同一 Session 的所有 Job 保持一致。"
+  - "API 创建 Session 不接受客户端 runtime_secret_ref、环境变量名或 plaintext key；Worker 仅由服务端注入 WORKFLOW_BYOK_API_KEY。"
+  - "四类真实生成均由 fake OpenAI-compatible provider 驱动并通过严格 schema 校验；固定模板只保留在 Mock 路径。"
+  - "Evidence quote 在 canonical page text 中唯一精确匹配且 claim 与 quote 相关时才 VERIFIED；未知/跨文档/哈希不匹配/多重匹配/格式错误不得伪造 Evidence。"
+  - "INSUFFICIENT_EVIDENCE claim 无 Evidence 引用；每个其他 claim 至少有一个 VERIFIED Evidence。"
+  - "document-version PDF endpoint 只读取已登记版本，inline 返回 application/pdf；刷新后 Web 从 document_version_id 恢复，Evidence 页码按钮定位正确并拒绝非法页码。"
+  - "保留 Mock、快速问答、RETRY、EDIT_ANSWER、revision、idempotency、原子更新和 loopback/CORS 安全边界。"
+required_tests:
+  - "npm run contract"
+  - "npm run typecheck"
+  - "npm run lint"
+  - "npm run test:runtime-integration"
+  - "npm exec vitest -- run tests/integration/guided-learning/byok.test.ts tests/integration/api/guided-learning-http.test.ts"
+  - "npm test"
+  - "npm run build"
+  - "npm run e2e:smoke"
+  - "node scripts/security-scan.mjs --skip-audit"
+  - "git diff --check"
+manual_acceptance:
+  - "使用用户真实 provider/endpoint/model/API key 完成连接和最小真实生成/Evidence 闭环；未提供凭据时标记 BLOCKED_BY_MISSING_USER_CREDENTIALS，不得用 fake provider 代替。"
+security_considerations:
+  - "API key 不进入 SQLite、Job payload、Session snapshot、API response、日志、trace、URL 或提交。"
+  - "API/Worker 使用同名 WORKFLOW_BYOK_API_KEY 环境 secret；Session Memory 仅保留开发连接测试用途。"
+  - "Provider endpoint 必须满足 HTTPS/base URL 规则；PDF endpoint 不接受任意文件路径。"
+risks:
+  - risk: "真实模型可能输出无法 grounding 的 claim。"
+    mitigation: "严格 schema、唯一 quote 解析和 INSUFFICIENT_EVIDENCE 降级；fake provider 与真实人工验收分开记录。"
+  - risk: "未提供真实凭据无法完成外部人工验收。"
+    mitigation: "记录 BLOCKED_BY_MISSING_USER_CREDENTIALS，不宣称 V1.0 正式发布。"
+completion_criteria:
+  - "专项和全量自动化门禁实际通过，工作区无密钥、数据库、PDF、trace 或截图产物。"
+  - "真实 BYOK 人工验收完成后才可将任务改为 ACCEPTED；当前保持 IMPLEMENTING。"

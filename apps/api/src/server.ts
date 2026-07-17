@@ -57,6 +57,7 @@ export function createApiServer(
           project_id?: unknown;
           document_version_id?: unknown;
           learning_goal?: unknown;
+          provider_config?: unknown;
         }
       | undefined;
     return runtime.guidedLearningHandlers
@@ -70,10 +71,11 @@ export function createApiServer(
           throw validationError(
             "project_id, document_version_id and learning_goal are required",
           );
-        return runtime.guidedLearningHandlers.create({
-          project_id: body.project_id,
-          document_version_id: body.document_version_id,
-          learning_goal: body.learning_goal,
+          return runtime.guidedLearningHandlers.create({
+            project_id: body.project_id,
+            document_version_id: body.document_version_id,
+            learning_goal: body.learning_goal,
+            provider_config: parseProvider(body.provider_config),
         });
       })
       .then((result) => reply.code(result.statusCode).send(result.body));
@@ -89,6 +91,31 @@ export function createApiServer(
           return runtime.guidedLearningHandlers.get(sessionId);
         })
         .then((result) => reply.code(result.statusCode).send(result.body));
+    },
+  );
+
+  app.get(
+    "/api/v1/document-versions/:documentVersionId/content",
+    async (request, reply) => {
+      const { documentVersionId } = request.params as { documentVersionId?: string };
+      try {
+        requireId(documentVersionId, "docv_");
+        const query = request.query as { page?: string };
+        if (query.page !== undefined) {
+          const page = Number(query.page);
+          const version = runtime.storage.getDocumentVersion(documentVersionId);
+          if (!Number.isInteger(page) || page < 1 || !version || page > Number(version.page_count))
+            return reply.code(400).send({ error: "The requested PDF page is invalid." });
+        }
+        const content = await runtime.documentIngest.readPdf(documentVersionId);
+        if (!content) return reply.code(404).send({ error: "Document version content not found." });
+        return reply
+          .type("application/pdf")
+          .header("content-disposition", "inline")
+          .send(content);
+      } catch {
+        return reply.code(400).send({ error: "Document version id is invalid." });
+      }
     },
   );
 
@@ -158,11 +185,44 @@ export function createApiServer(
       const result = await runtime.byokConnectionTestApi.testConnection(
         request.body as never,
       );
-      return reply.code(result.status_code).send(result.body);
+      return reply.code(result.status_code).send({
+        schema_version: "api.v1",
+        request_id: requestId(request.id),
+        data: result.body,
+      });
     } catch {
       return reply
         .code(400)
         .send({ error: "The connection-test request is invalid." });
+    }
+  });
+
+  app.post("/api/v1/byok/environment-connection-test", async (request, reply) => {
+    try {
+      const body = request.body as { provider_config?: unknown } | undefined;
+      const provider = parseProvider(body?.provider_config);
+      if (provider.provider === "MOCK")
+        return reply.code(400).send({ error: "A BYOK provider is required." });
+      const result = await runtime.byokConnectionTestApi.testConnection({
+        schema_version: "model-gateway.v1",
+        message_kind: "REQUEST",
+        operation: "CONNECTION_TEST",
+        provider_config: provider,
+        runtime_secret_ref: {
+          kind: "ENVIRONMENT",
+          name: "WORKFLOW_BYOK_API_KEY",
+        },
+        input: { probe: true },
+      } as never);
+      return reply.code(result.status_code).send({
+        schema_version: "api.v1",
+        request_id: requestId(request.id),
+        data: result.body,
+      });
+    } catch {
+      return reply
+        .code(400)
+        .send({ error: "The environment connection-test request is invalid." });
     }
   });
 
@@ -446,11 +506,13 @@ function validationError(message: string) {
 }
 
 function parseProvider(value: unknown) {
+  if (value === undefined)
+    return { provider: "MOCK" as const, fixture_id: "guided-learning-v1" };
   if (typeof value !== "object" || value === null)
     throw validationError("A model configuration is required");
   const config = value as Record<string, unknown>;
   if (config.provider === "MOCK" && typeof config.fixture_id === "string")
-    return config as { provider: "MOCK"; fixture_id: string };
+    return { provider: "MOCK" as const, fixture_id: config.fixture_id };
   if (
     [
       "OPENAI",
@@ -464,19 +526,37 @@ function parseProvider(value: unknown) {
     Number.isInteger(config.request_timeout_ms) &&
     Number.isInteger(config.max_input_characters) &&
     Number.isInteger(config.max_output_tokens)
-  )
-    return config as {
-      provider:
+  ) {
+    let url: URL;
+    try {
+      url = new URL(config.base_url);
+    } catch {
+      throw validationError("Model base_url is invalid");
+    }
+    if (url.protocol !== "https:" || url.search || url.hash)
+      throw validationError("Model base_url must be HTTPS without query or fragment");
+    if (
+      Number(config.request_timeout_ms) < 1000 ||
+      Number(config.request_timeout_ms) > 120000 ||
+      Number(config.max_input_characters) < 1 ||
+      Number(config.max_input_characters) > 10000000 ||
+      Number(config.max_output_tokens) < 1 ||
+      Number(config.max_output_tokens) > 100000
+    )
+      throw validationError("Model configuration limits are invalid");
+    return {
+      provider: config.provider as
         | "OPENAI"
         | "GEMINI"
         | "GROQ"
         | "OPENROUTER"
-        | "CUSTOM_OPENAI_COMPATIBLE";
-      base_url: string;
-      model: string;
-      request_timeout_ms: number;
-      max_input_characters: number;
-      max_output_tokens: number;
+        | "CUSTOM_OPENAI_COMPATIBLE",
+      base_url: config.base_url,
+      model: config.model,
+      request_timeout_ms: Number(config.request_timeout_ms),
+      max_input_characters: Number(config.max_input_characters),
+      max_output_tokens: Number(config.max_output_tokens),
     };
+  }
   throw validationError("Model configuration is invalid");
 }

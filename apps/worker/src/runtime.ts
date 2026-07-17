@@ -62,8 +62,7 @@ export function createWorkerRuntime(
         ...(request as Record<string, unknown>),
         runtime_secret_ref: {
           kind: "ENVIRONMENT",
-          name:
-            process.env.WORKFLOW_BYOK_SECRET_NAME ?? "WORKFLOW_BYOK_API_KEY",
+          name: "WORKFLOW_BYOK_API_KEY",
         },
       } as never);
     },

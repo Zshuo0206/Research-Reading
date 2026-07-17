@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { StorageRepository } from "../../../../packages/storage/dist/index.js";
 import { saveContentAddressedPdf, type UploadInput } from "./upload.js";
 
@@ -52,6 +54,18 @@ export class DocumentIngestService {
       );
       if (raced) return raced;
       throw error;
+    }
+  }
+
+  async readPdf(documentVersionId: string): Promise<Buffer | undefined> {
+    const version = this.storage.getDocumentVersion(documentVersionId);
+    if (!version) return undefined;
+    const sha = String(version.source_sha256);
+    if (!/^[a-f0-9]{64}$/.test(sha)) return undefined;
+    try {
+      return await readFile(join(this.contentRoot, sha.slice(0, 2), `${sha}.pdf`));
+    } catch {
+      return undefined;
     }
   }
 }

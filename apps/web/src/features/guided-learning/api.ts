@@ -50,6 +50,16 @@ export type CreateSessionResult = {
   session: GuidedLearningSession;
   job_id: string;
 };
+export type GuidedProviderConfig =
+  | { provider: "MOCK"; fixture_id: string }
+  | {
+      provider: "OPENAI" | "GEMINI" | "GROQ" | "OPENROUTER" | "CUSTOM_OPENAI_COMPATIBLE";
+      base_url: string;
+      model: string;
+      request_timeout_ms: number;
+      max_input_characters: number;
+      max_output_tokens: number;
+    };
 
 export type GuidedLearningCommandResult = {
   outcome: "APPLIED" | "IDEMPOTENT";
@@ -107,11 +117,23 @@ export class GuidedLearningApiClient {
     project_id: string;
     document_version_id: string;
     learning_goal: string;
+    provider_config?: GuidedProviderConfig;
   }) {
     return this.request<CreateSessionResult>(
       "/api/v1/guided-learning/sessions",
       { method: "POST", body: JSON.stringify(input) },
     );
+  }
+
+  testEnvironmentConnection(provider_config: Exclude<GuidedProviderConfig, { provider: "MOCK" }>) {
+    return this.request<unknown>("/api/v1/byok/environment-connection-test", {
+      method: "POST",
+      body: JSON.stringify({ provider_config }),
+    });
+  }
+
+  documentContentUrl(documentVersionId: string, page?: number): string {
+    return `${this.baseUrl}/api/v1/document-versions/${documentVersionId}/content${page ? `#page=${page}` : ""}`;
   }
 
   getGuidedLearningSession(sessionId: string) {
