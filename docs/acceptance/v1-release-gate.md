@@ -42,6 +42,14 @@ PDF fixture SHA-256 保持：
 
 Worker CLI 检查：构建后的正式 Worker ready 后保持运行，smoke 子进程立即以 code 0 退出。当前执行环境不是交互式控制台，无法注入真实键盘 `Ctrl+C`；等价的 AbortSignal graceful-stop、当前 Job 等待、单次 close 和 stopped 回调由 Worker loop 9/9 覆盖。真实用户终端仍需补做一次 `Ctrl+C` 人工确认。
 
+## 真实 PDF 上传阻断与修复
+
+人工验收使用了 8.34 MiB（8,745,861 bytes）的真实文本 PDF。浏览器上传时出现 `ERR_CONNECTION_ABORTED`，但 `/health` 仍正常；根因为 PDF 上传请求在 Fastify 默认 1 MiB bodyLimit 的内容解析阶段被拒绝。这属于 V1.0 发布阻断。
+
+本分支已将 `POST /api/v1/projects/:projectId/documents` 改为路由级 32 MiB 上限（`PDF_UPLOAD_MAX_BYTES = 32 * 1024 * 1024`），没有扩大普通 JSON 路由的全局限制。超过上限返回带 CORS 的 api.v1 `413/PDF_TOO_LARGE` JSON envelope；Web API client 将其显示为可读业务错误，允许用户重新选择较小文件。动态 2 MiB 和约 9 MiB 测试、超限 413/无持久化对象测试及前端错误测试已通过；完整自动验证结果以本次修复提交后的 Gate 记录为准。
+
+真实 8.34 MiB PDF 的浏览器重新上传仍待用户人工复验；`REAL_BYOK_ACCEPTANCE` 仍不得标记 `PASS`，`READY_FOR_V1_0_TAG` 仍不得标记，不创建 `v1.0.0` tag。
+
 ## 真实 BYOK 与浏览器状态
 
 当前安全检查只确认 `WORKFLOW_BYOK_API_KEY` 是否存在，未打印其值；结果为不存在：

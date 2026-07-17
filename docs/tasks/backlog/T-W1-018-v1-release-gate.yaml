@@ -12,6 +12,7 @@ scope:
   - "检查真实 BYOK 凭据是否已由安全环境提供；没有凭据时记录 BLOCKED_BY_MISSING_USER_CREDENTIALS，不伪造通过。"
   - "记录浏览器真实 BYOK、Evidence 人工抽查、产品负责人批准和最终 V1.0 发布判定。"
   - "修复正式 Worker 入口的持久 SQLite Job 轮询、idle wait、顺序 runOnce 和 graceful shutdown。"
+  - "修复真实科研 PDF 上传的默认 1 MiB bodyLimit 阻断：仅上传路由允许最大 32 MiB，并为超限请求返回 api.v1 413。"
 out_of_scope:
   - "新产品功能、OCR、第二/第三学习阶段、ANALYZE、TRANSFER、多篇论文、远程部署、多用户、知识图谱、写作辅助、团队协作、UI 重构。"
 dependencies:
@@ -22,6 +23,11 @@ writable_paths:
   - apps/worker/src/worker-loop.ts
   - apps/worker/src/worker-service.ts
   - tests/integration/jobs/worker-loop.test.ts
+  - apps/api/src/server.ts
+  - apps/api/src/upload-limits.ts
+  - apps/web/src/features/guided-learning/api.ts
+  - tests/integration/api/pdf-upload-limits.test.ts
+  - tests/integration/web/guided-learning-client.test.ts
   - docs/tasks/backlog/T-W1-018-v1-release-gate.yaml
   - docs/acceptance/v1-release-gate.md
   - docs/releases/v1.0.0-release-notes.md
@@ -39,8 +45,6 @@ read_only_paths:
   - apps/api/migrations/006_guided_learning_provider_config.sql
   - tests/fixtures/pdf/synthetic-text.pdf
 forbidden_paths:
-  - apps/api/**
-  - apps/web/**
   - packages/**
   - tests/contracts/**
   - tests/fixtures/**

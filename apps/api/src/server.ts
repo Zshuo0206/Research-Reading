@@ -2,12 +2,32 @@ import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyReply } from "fastify";
 import { isApiHostAllowed } from "./host-policy.js";
 import { createApiRuntime } from "./runtime.js";
+import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_MIB } from "./upload-limits.js";
 
 export function createApiServer(
   options: { databasePath?: string; contentRoot?: string } = {},
 ) {
   const app = Fastify({ logger: false });
   const runtime = createApiRuntime(options.databasePath, options.contentRoot);
+  app.setErrorHandler((error, request, reply) => {
+    if (
+      isPdfUploadRequest(request.method, request.url) &&
+      isBodyTooLargeError(error)
+    ) {
+      const id = requestId(request.id);
+      return reply.code(413).send({
+        schema_version: "api.v1",
+        request_id: id,
+        error: {
+          code: "PDF_TOO_LARGE",
+          message: `PDF 文件不能超过 ${PDF_UPLOAD_MAX_MIB} MiB。`,
+          request_id: id,
+          details: [],
+        },
+      });
+    }
+    return reply.send(error);
+  });
   app.addHook("onRequest", async (request, reply) => {
     const origin = request.headers.origin;
     if (
@@ -251,35 +271,39 @@ export function createApiServer(
     });
   });
 
-  app.post("/api/v1/projects/:projectId/documents", async (request, reply) => {
-    const { projectId } = request.params as { projectId?: string };
-    const filename = request.headers["x-filename"];
-    const idempotencyKey = request.headers["idempotency-key"];
-    return sendHandled(reply, requestId(request.id), async () => {
-      requireId(projectId, "proj_");
-      if (typeof filename !== "string" || filename.length === 0)
-        throw validationError("x-filename is required");
-      if (typeof idempotencyKey !== "string" || idempotencyKey.length === 0)
-        throw validationError("Idempotency-Key is required");
-      if (!(request.body instanceof Buffer))
-        throw validationError("A PDF request body is required");
-      const job = await runtime.documentIngest.upload({
-        projectId,
-        title: filename,
-        file: {
-          filename,
-          contentType: String(request.headers["content-type"] ?? ""),
-          bytes: request.body,
-        },
-        idempotencyKey,
+  app.post(
+    "/api/v1/projects/:projectId/documents",
+    { bodyLimit: PDF_UPLOAD_MAX_BYTES },
+    async (request, reply) => {
+      const { projectId } = request.params as { projectId?: string };
+      const filename = request.headers["x-filename"];
+      const idempotencyKey = request.headers["idempotency-key"];
+      return sendHandled(reply, requestId(request.id), async () => {
+        requireId(projectId, "proj_");
+        if (typeof filename !== "string" || filename.length === 0)
+          throw validationError("x-filename is required");
+        if (typeof idempotencyKey !== "string" || idempotencyKey.length === 0)
+          throw validationError("Idempotency-Key is required");
+        if (!(request.body instanceof Buffer))
+          throw validationError("A PDF request body is required");
+        const job = await runtime.documentIngest.upload({
+          projectId,
+          title: filename,
+          file: {
+            filename,
+            contentType: String(request.headers["content-type"] ?? ""),
+            bytes: request.body,
+          },
+          idempotencyKey,
+        });
+        return {
+          document_id: job.payload.documentId,
+          document_version_id: job.payload.documentVersionId,
+          job_id: job.jobId,
+        };
       });
-      return {
-        document_id: job.payload.documentId,
-        document_version_id: job.payload.documentVersionId,
-        job_id: job.jobId,
-      };
-    });
-  });
+    },
+  );
 
   app.get("/api/v1/documents/:documentId", async (request, reply) => {
     const { documentId } = request.params as { documentId?: string };
@@ -491,6 +515,19 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
 function requestId(value: string): string {
   return `req_${value.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+}
+
+function isPdfUploadRequest(method: string, url: string): boolean {
+  return method === "POST" && /^\/api\/v1\/projects\/[^/]+\/documents(?:\?|$)/.test(url);
+}
+
+function isBodyTooLargeError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "FST_ERR_CTP_BODY_TOO_LARGE"
+  );
 }
 
 function requireId(

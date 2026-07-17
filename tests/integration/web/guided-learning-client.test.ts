@@ -81,6 +81,38 @@ describe("Guided Learning Web API client", () => {
       ),
     ).rejects.toMatchObject({ kind: "network", code: "NETWORK_ERROR" });
   });
+
+  it("surfaces a bounded PDF upload error as a readable business error", async () => {
+    const fetcher = (async () =>
+      new Response(
+        JSON.stringify({
+          schema_version: "api.v1",
+          request_id: "req_pdf_limit",
+          error: {
+            code: "PDF_TOO_LARGE",
+            message: "PDF 文件不能超过 32 MiB。",
+            request_id: "req_pdf_limit",
+            details: [],
+          },
+        }),
+        { status: 413, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+    const client = new GuidedLearningApiClient("http://api.test", fetcher);
+
+    await expect(
+      client.uploadPdf(
+        "proj_1",
+        new File([new Uint8Array([37, 80, 68, 70, 45])], "large.pdf", {
+          type: "application/pdf",
+        }),
+      ),
+    ).rejects.toMatchObject({
+      kind: "business",
+      code: "PDF_TOO_LARGE",
+      status: 413,
+      message: "PDF 文件不能超过 32 MiB。",
+    });
+  });
 });
 
 describe("Guided Learning polling", () => {

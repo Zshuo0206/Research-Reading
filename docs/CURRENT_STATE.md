@@ -1,7 +1,7 @@
 # Current State
 
 最后更新：2026-07-17（Asia/Shanghai）
-状态：`WAVE_1_RELEASE_GATE_WORKER_REPAIR_IMPLEMENTING`
+状态：`WAVE_1_RELEASE_GATE_PDF_UPLOAD_REPAIR_IMPLEMENTING`
 
 产品需求基线：V1.0 产品定义已归档至
 `docs/product/versions/科研文献引导式学习平台_V1.0产品定义.md`，开发需求见
@@ -64,7 +64,7 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-015：`REVIEW`，已进入 main；包含 Guided Learning Web 入口、目标/PDF/Session 创建、轮询恢复、方向选择、逐题反馈、Evidence、重试和阶段总结，仍待真实 PDF 完整 E2E、BYOK 和产品验收。
 - T-W1-016：`INTEGRATED`，Mock 技术验收通过，发布状态为 `RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS`；真实 BYOK 人工验收仍是发布门槛。
 - T-W1-017：`INTEGRATED`，真实 BYOK Guided Generation、provider config migration、Worker 环境 secret、四类专用输入/输出约束、source-only Evidence verification、PDF content endpoint、刷新恢复和页码定位已进入 main；真实外部 BYOK 人工验收因缺少用户凭据保持阻塞。
-- T-W1-018：`IMPLEMENTING`，已修复正式 Worker 持久轮询、idle wait 和 graceful shutdown；自动化 Release Gate 与 Worker loop 9/9 通过，真实 BYOK、浏览器人工验收、Evidence 人工抽查和产品负责人批准待完成。
+- T-W1-018：`IMPLEMENTING`，已修复正式 Worker 持久轮询、idle wait 和 graceful shutdown。随后人工使用 8.34 MiB 真实文本 PDF 上传时出现 `ERR_CONNECTION_ABORTED`，根因为 PDF 上传路由仍受 Fastify 默认 1 MiB bodyLimit 限制；本轮已实施路由级 32 MiB 上限和结构化 413 修复，等待完整自动 Gate 和真实 PDF 人工复验。真实 BYOK、浏览器人工验收、Evidence 人工抽查和产品负责人批准仍待完成。
 - T-W1-005：保持 `DRAFT`；扩展后的双模式完整范围尚未进入 main；快速问答子集和 Guided Learning API/SQLite runtime 已存在，其余 Web 和完整产品验收仍待实施。
 - T-W1-006：保持 `DRAFT`；最小快速问答 Web 和 T-W1-015 Guided Learning Web 已存在，但其完整任务范围仍待实施。
 - 不据此改变其他任务或 Gate 的状态。
