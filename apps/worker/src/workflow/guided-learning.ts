@@ -59,6 +59,8 @@ async function runGeneration(
     return { idempotent: true, session };
   if (session.session_revision !== payload.expected_revision || session.state !== payload.expected_state)
     throw new GuidedLearningWorkerError("REVISION_CONFLICT", `Session ${payload.session_id} no longer matches the generation boundary`);
+  if (payload.operation === "GUIDED_LEARNING_FEEDBACK_GENERATION")
+    requireFeedbackPointer(payload, session);
   const pages = input.storage.getDocumentPages(payload.document_version_id);
   if (pages.length === 0) throw new GuidedLearningWorkerError("NOT_FOUND", "Document version has no canonical pages");
   const contexts = contextSpans(payload.document_version_id, pages);
@@ -533,6 +535,18 @@ function resolveClaim(
 function parsePayload(value: unknown, operation: GuidedLearningJobKind): GuidedLearningGenerationJobPayload {
   if (!isRecord(value) || value.schema_version !== "guided-learning.v1" || value.operation !== operation || typeof value.session_id !== "string" || typeof value.project_id !== "string" || typeof value.document_version_id !== "string" || typeof value.learning_goal !== "string" || !Number.isInteger(value.expected_revision) || typeof value.expected_state !== "string" || !isRecord(value.provider_config) || typeof value.provider_config.provider !== "string")
     throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Guided Learning job payload is invalid", false);
+  if (
+    operation === "GUIDED_LEARNING_FEEDBACK_GENERATION" &&
+    (typeof value.question_id !== "string" ||
+      value.question_id.length === 0 ||
+      !Number.isInteger(value.question_order) ||
+      Number(value.question_order) < 1)
+  )
+    throw new GuidedLearningWorkerError(
+      "VALIDATION_FAILED",
+      "Feedback generation job requires a question pointer",
+      false,
+    );
   return value as unknown as GuidedLearningGenerationJobPayload;
 }
 
@@ -582,6 +596,33 @@ function currentQuestion(session: GuidedLearningSession): Value {
   const question = session.questions?.find((item) => item.order === session.current_question_order);
   if (!question) throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Current question is unavailable", false);
   return question as unknown as Value;
+}
+
+function requireFeedbackPointer(
+  payload: GuidedLearningGenerationJobPayload,
+  session: GuidedLearningSession,
+): void {
+  if (
+    typeof payload.question_id !== "string" ||
+    payload.question_id.length === 0 ||
+    !Number.isInteger(payload.question_order) ||
+    Number(payload.question_order) < 1
+  )
+    throw new GuidedLearningWorkerError(
+      "VALIDATION_FAILED",
+      "Feedback generation job requires a question pointer",
+      false,
+    );
+  const question = currentQuestion(session);
+  if (
+    payload.question_id !== question.question_id ||
+    payload.question_order !== question.order
+  )
+    throw new GuidedLearningWorkerError(
+      "REVISION_CONFLICT",
+      "Feedback question pointer changed",
+      false,
+    );
 }
 
 function contextSpans(documentVersionId: string, pages: readonly DocumentPageRecord[]): Value[] {

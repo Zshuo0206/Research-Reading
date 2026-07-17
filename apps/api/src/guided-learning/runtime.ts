@@ -377,10 +377,14 @@ export class GuidedLearningRuntime {
       );
     if (event === "RETRY" && previous.failure) {
       const operation = operationToJobKind(previous.failure.failed_operation);
+      const question = requiresQuestionPointer(operation)
+        ? this.currentQuestion(next)
+        : undefined;
       return this.generationJob(
         next,
         operation,
         next.state as GuidedLearningGenerationJobPayload["expected_state"],
+        question,
       );
     }
     return undefined;
@@ -408,10 +412,25 @@ export class GuidedLearningRuntime {
     };
     if (typeof session.selected_direction_id === "string")
       payload.selected_direction_id = session.selected_direction_id;
-    if (question) {
+    if (requiresQuestionPointer(operation)) {
+      if (
+        !question ||
+        typeof question.question_id !== "string" ||
+        question.question_id.length === 0 ||
+        !Number.isInteger(question.order) ||
+        Number(question.order) < 1
+      )
+        throw new GuidedLearningRuntimeError(
+          "VALIDATION_FAILED",
+          "Feedback generation job requires a valid current question pointer",
+        );
       payload.question_id = String(question.question_id);
       payload.question_order = Number(question.order);
-    }
+    } else if (question)
+      throw new GuidedLearningRuntimeError(
+        "VALIDATION_FAILED",
+        "Non-feedback generation job cannot contain a question pointer",
+      );
     return {
       job_id: jobId,
       kind: operation,
@@ -797,6 +816,10 @@ function operationToJobKind(
     case "GENERATE_STAGE_SUMMARY":
       return "GUIDED_LEARNING_STAGE_SUMMARY_GENERATION";
   }
+}
+
+function requiresQuestionPointer(operation: GuidedLearningJobKind): boolean {
+  return operation === "GUIDED_LEARNING_FEEDBACK_GENERATION";
 }
 function mapStorageError(error: unknown): GuidedLearningRuntimeError {
   if (error instanceof GuidedLearningRuntimeError) return error;

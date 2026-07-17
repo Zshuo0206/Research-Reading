@@ -14,6 +14,8 @@ scope:
   - "修复正式 Worker 入口的持久 SQLite Job 轮询、idle wait、顺序 runOnce 和 graceful shutdown。"
   - "修复真实科研 PDF 上传的默认 1 MiB bodyLimit 阻断：仅上传路由允许最大 32 MiB，并为超限请求返回 api.v1 413。"
   - "修复 DeepSeek V4 Guided Learning 结构化 JSON 响应兼容性：关闭仅限 DeepSeek 的 thinking，强化 JSON 示例和安全响应诊断，不改变其他 OpenAI-compatible provider。"
+  - "修复 Guided Learning RETRY 反馈 Job 丢失当前题目指针的问题；反馈 Job 必须携带当前 question_id/order，其他生成 Job 不得携带，并在 Worker 调用模型前 fail closed。"
+  - "使用固定数据库和 Session allowlist 的一次性事务脚本恢复指定真实验收 Session；严格校验 FAILED/revision 11 前置条件，幂等重放不产生二次修改。"
 out_of_scope:
   - "新产品功能、OCR、第二/第三学习阶段、ANALYZE、TRANSFER、多篇论文、远程部署、多用户、知识图谱、写作辅助、团队协作、UI 重构。"
 dependencies:
@@ -24,10 +26,14 @@ writable_paths:
   - apps/worker/src/worker-loop.ts
   - apps/worker/src/worker-service.ts
   - apps/worker/src/runtime.ts
+  - apps/worker/src/workflow/guided-learning.ts
+  - apps/api/src/guided-learning/runtime.ts
   - packages/model-gateway/src/openai-compatible.ts
   - tests/integration/jobs/worker-loop.test.ts
   - tests/integration/byok/openai-compatible.test.ts
   - tests/integration/guided-learning/byok.test.ts
+  - tests/integration/guided-learning/retry-pointer.test.ts
+  - scripts/repair-wave1-manual-session.mjs
   - apps/api/src/server.ts
   - apps/api/src/upload-limits.ts
   - apps/web/src/features/guided-learning/api.ts
@@ -52,7 +58,6 @@ read_only_paths:
 forbidden_paths:
   - tests/contracts/**
   - tests/fixtures/**
-  - scripts/**
 contract_version: "guided-learning.v1 + model-gateway.v1 + api.v1"
 acceptance_criteria:
   - "AUTOMATED_RELEASE_GATE 为 PASS：planning 当前 19 tasks（合并前 main 为 18）、runtime integration 26/26、BYOK/Evidence 定向 13/13、npm test 24/24、Playwright 3/3、lint、typecheck、contract、build、smoke、security 和 git diff --check 均通过。"
@@ -62,6 +67,7 @@ acceptance_criteria:
   - "缺少凭据时 V1_RELEASE_STATUS 必须为 BLOCKED_BY_MISSING_USER_CREDENTIALS 或 RELEASE_CANDIDATE_AWAITING_REAL_BYOK_ACCEPTANCE，不得标记 ACCEPTED、RELEASED 或 v1.0.0。"
   - "正式非 smoke Worker 持久轮询 SQLite Job 队列，默认 idle delay 为 250ms；停止时不领取新 Job，等待当前 Job 完成，只 close 一次并输出一次 stopped。"
   - "BYOK 网关对 finish_reason、content、reasoning_content 和 provider response schema 失败安全分类；Worker 诊断日志不包含 secret、prompt 或模型响应原文。"
+  - "反馈 SUBMIT_ANSWER、EDIT_ANSWER、RETRY 以及方向/问题/阶段总结 RETRY 的题目指针边界、缺失指针早期拒绝、完整失败恢复和幂等重放回归测试通过。"
 manual_acceptance:
   - "已有安全配置的 provider、HTTPS base_url、model 和 WORKFLOW_BYOK_API_KEY 时，执行连接测试及四类 Guided Learning 真实生成闭环。"
   - "逐项检查方向、问题、点评、Reference Answer、Evidence、Summary、刷新/重启恢复、RETRY、EDIT_ANSWER、快速问答和 PDF 页码跳转。"
