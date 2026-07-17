@@ -2,7 +2,7 @@
 
 这是一个问题驱动型科研文献阅读与研究资产管理平台的工程仓库。
 
-当前处于 **Wave 1**：真实文本 PDF 导入、快速问答、`guided-learning.v1` 契约、Guided Learning API/SQLite runtime、Worker、Web Workbench 和 Mock 端到端闭环已经进入 `main`。Mock 技术验收通过，但 Wave 1 当前发布判定为 `RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS`；真实 BYOK、模型驱动内容、语义 Evidence grounding、统一 Worker secret 和 PDF 刷新/页码跳转完成前不得发布。
+当前处于 **Wave 1 V1.0 Release Gate**：真实文本 PDF 导入、快速问答、`guided-learning.v1` 契约、Guided Learning API/SQLite runtime、Worker、Web Workbench、真实 BYOK 适配和 Evidence source verification 已进入 `main`。自动化发布 Gate 已通过，但真实外部 BYOK、浏览器人工验收、Evidence 人工抽查和产品负责人批准尚未完成；当前状态为 `BLOCKED_BY_MISSING_USER_CREDENTIALS`，不得发布。
 
 ## 快速入口
 
@@ -14,6 +14,8 @@
 - 会话恢复：`docs/runbooks/session-recovery.md`
 - Wave 1 本地运行：`docs/operations/wave1-local-runbook.md`
 - Wave 1 验收报告：`docs/acceptance/wave1-guided-learning-acceptance.md`
+- V1.0 Release Gate：`docs/acceptance/v1-release-gate.md`
+- V1.0 Release Notes（准备稿）：`docs/releases/v1.0.0-release-notes.md`
 
 ## 命令
 

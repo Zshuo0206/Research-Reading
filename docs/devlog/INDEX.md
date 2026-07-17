@@ -10,6 +10,8 @@
 | 2026-07-16 | Wave 1 | Guided Learning Worker Generation Jobs | IMPLEMENTED — T-W1-014，Web/BYOK 人工验收待后续任务 |
 | 2026-07-16 | Wave 1 | Guided Learning Web Workbench | REVIEW — T-W1-015，真实 BYOK 与完整产品验收待后续 |
 | 2026-07-16 | Wave 1 | Wave 1 Guided Learning 验收与发布收口 | ACCEPTED_WITH_KNOWN_LIMITATIONS — T-W1-016，真实 BYOK 人工验收待凭据 |
+| 2026-07-17 | Wave 1 | V1.0 Release Gate | AUTOMATED_GATE_PASSED_WITH_OPEN_BLOCKERS — T-W1-018，真实 BYOK/人工验收待凭据 |
 
 详细日志：`docs/devlog/2026-07-11.md`、`docs/devlog/2026-07-12.md`、
 `docs/devlog/2026-07-13.md`、`docs/devlog/2026-07-15.md`、`docs/devlog/2026-07-16.md`
+、`docs/devlog/2026-07-17.md`

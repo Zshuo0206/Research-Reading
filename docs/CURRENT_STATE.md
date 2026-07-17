@@ -1,17 +1,17 @@
 # Current State
 
 最后更新：2026-07-17（Asia/Shanghai）
-状态：`WAVE_1_TECHNICAL_ACCEPTANCE_PASSED_T-W1-017_REVIEW_REPAIR_IMPLEMENTING`
+状态：`WAVE_1_AUTOMATED_RELEASE_GATE_PASSED_T-W1-018_IMPLEMENTING`
 
 产品需求基线：V1.0 产品定义已归档至
 `docs/product/versions/科研文献引导式学习平台_V1.0产品定义.md`，开发需求见
 `docs/product/v1.0-development-requirements.md`。
 RFC-W1-002 仍为 `PROPOSED`；契约版本与状态机部分已通过独立决策记录落地。
-`guided-learning.v1` runtime、T-W1-013 API/SQLite runtime、T-W1-014 Worker 生成、T-W1-015 Web Workbench 和 T-W1-016 验收修复已集成 main。T-W1-017 已在独立分支完成 review repair；V1.0 仍只被真实 BYOK 凭据、外部连接和人工产品体验验收阻塞。
+`guided-learning.v1` runtime、T-W1-013 API/SQLite runtime、T-W1-014 Worker 生成、T-W1-015 Web Workbench、T-W1-016 验收修复和 T-W1-017 Real BYOK/Evidence Grounding 已集成 main。T-W1-018 自动化发布 Gate 已通过；V1.0 仍被真实 BYOK 凭据、外部连接、浏览器人工验收、Evidence 人工抽查和产品负责人批准阻塞。
 
 ## main 当前基线
 
-- `main`、`origin/main` 验收基线为 `3df69784de5c3ebbccae36790f2a1e63a8e92ed3`；T-W1-017 review repair 分支从该基线创建，尚未合并回 main。
+- `main`、`origin/main` 当前发布 Gate 基线为 `54043fb28cb082eb871773732bafce0f031fc562`，已包含 T-W1-017 merge commit。
 - PR #2、PR #3、PR #4 已合并；PR #4 合并了 `guided-learning.v1` 契约实现。
 - T-W1-011 已集成；T-W1-013 API/SQLite runtime 和 T-W1-014 Worker 生成已进入 main。
 
@@ -63,7 +63,8 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-014：`REVIEW`，已完成并进入 main；包含四类 Worker Job、原子入队、真实 PDF Mock 闭环和失败重试，仍待后续审查收口。
 - T-W1-015：`REVIEW`，已进入 main；包含 Guided Learning Web 入口、目标/PDF/Session 创建、轮询恢复、方向选择、逐题反馈、Evidence、重试和阶段总结，仍待真实 PDF 完整 E2E、BYOK 和产品验收。
 - T-W1-016：`INTEGRATED`，Mock 技术验收通过，发布状态为 `RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS`；真实 BYOK 人工验收仍是发布门槛。
-- T-W1-017：`IMPLEMENTING`，已接入真实 BYOK Guided Generation、provider config migration、Worker 环境 secret、四类专用输入/输出约束、source-only Evidence verification、PDF content endpoint、刷新恢复和页码定位；真实外部 BYOK 人工验收因缺少用户凭据保持阻塞。
+- T-W1-017：`INTEGRATED`，真实 BYOK Guided Generation、provider config migration、Worker 环境 secret、四类专用输入/输出约束、source-only Evidence verification、PDF content endpoint、刷新恢复和页码定位已进入 main；真实外部 BYOK 人工验收因缺少用户凭据保持阻塞。
+- T-W1-018：`IMPLEMENTING`，自动化 Release Gate 通过；真实 BYOK、浏览器人工验收、Evidence 人工抽查和产品负责人批准待完成。
 - T-W1-005：保持 `DRAFT`；扩展后的双模式完整范围尚未进入 main；快速问答子集和 Guided Learning API/SQLite runtime 已存在，其余 Web 和完整产品验收仍待实施。
 - T-W1-006：保持 `DRAFT`；最小快速问答 Web 和 T-W1-015 Guided Learning Web 已存在，但其完整任务范围仍待实施。
 - 不据此改变其他任务或 Gate 的状态。
@@ -76,13 +77,14 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-015 合并验证：Web API client/轮询 5/5，Guided Learning runtime + Worker 12/12，Playwright Web smoke 3/3（含快速问答回归和 Guided Learning Mock-shaped 流程），runtime integration 26/26，真实 `synthetic-text.pdf` 后端 Mock 闭环保持通过；BYOK 人工验收尚未执行。
 - T-W1-016 验收分支验证：全新 SQLite migration 1–5、schema version 5、API/Worker 同库和重启恢复通过；BYOK/Mock 定向 17/17；完整 planning、check、lint、typecheck、runtime integration 26/26、`npm test` 24/24、contract、build、Playwright 3/3、smoke、security scan 和 `git diff --check` 通过。这些证据仅证明 Mock 技术验收，不证明真实模型生成或 V1.0 发布。
 - T-W1-017 review repair 定向覆盖：默认 Worker BYOK gateway fake HTTP 四 operation、operation-specific input/output、完整 history、source-only Evidence verification、非蕴含 claim、重复 Evidence 去重、Unicode/code-point offset 和无效输出 fail-closed；Playwright 3/3 仅覆盖 BYOK 控件与 Mock UI，真实 BYOK 浏览器 E2E 标记 `BROWSER_REAL_BYOK_E2E_NOT_EXECUTED`。
+- T-W1-017 merge 后 Release Gate 复核：planning 18 tasks、runtime integration 26/26、BYOK/Evidence 13/13、`npm test` 24/24、Playwright 3/3、lint、typecheck、contract、build、smoke、security 和 `git diff --check` 全部通过；PDF fixture SHA-256 保持 `99e07b4ba995b7c90bd84628a5db55b71a4faa1f06d3714a5942741cd39a55f8`。
 - 本地完整 `npm run ci` 仍在首步 `format` 受既有 Windows CRLF checkout 问题阻断；本次不批量改写全仓换行。
 - `contract:check` 本身已通过；不能把本地 CI 的 CRLF 阻断写成契约 drift 失败。
 - T-W1-011 分支未实际运行 smoke；本次文档同步不补写未执行结果，且本轮未修改 runtime。
 
 ## 尚未解决的问题
 
-- T-W1-015 和 T-W1-016 已合并 main；T-W1-017 review repair 尚未合并 main；真实 BYOK 外部连接、真实模型人工体验和完整产品验收尚未完成。
+- T-W1-015、T-W1-016 和 T-W1-017 已合并 main；真实 BYOK 外部连接、浏览器人工体验、Evidence 人工抽查和产品负责人批准尚未完成。
 - 全仓 Windows CRLF format 基线治理尚未解决。
 - RFC-W1-002 仍需完整的产品/技术审批，不因契约决定记录而整体变为 `ACCEPTED`。
 
@@ -90,8 +92,8 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 
 按依赖顺序，下一步应是：
 
-1. 集成 T-W1-017 review repair，并保持 V1.0 `RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS`。
-2. 提供真实凭据并完成 BYOK 人工连接、最小四 operation 生成/Evidence 验收和浏览器体验验收，再由人类项目负责人作最终产品决定。
+1. 提供安全配置的真实凭据并完成 BYOK 人工连接、最小四 operation 生成/Evidence 验收和浏览器体验验收。
+2. 完成 Evidence 人工抽查并由人类项目负责人决定是否进入 `READY_FOR_V1_0_TAG`；不自动创建 tag。
 
 不自动扩大 T-W1-005/T-W1-006 的范围；不因 T-W1-014 集成而宣称整个 Wave 1 完成。
 

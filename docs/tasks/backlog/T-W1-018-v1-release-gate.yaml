@@ -1,0 +1,63 @@
+id: T-W1-018
+task_id: T-W1-018
+title: "V1.0 Release Gate"
+owner_role: primary-agent
+status: IMPLEMENTING
+wave: 1
+objective: "对已经进入 main 的 V1.0 本地单用户产品执行最终发布 Gate，包括真实外部 BYOK 人工验收、产品人工检查、安全检查、发布材料和最终发布判定。"
+background: "T-W1-017 已完成真实 BYOK 适配、四类 Guided Learning operation、source verification、PDF 恢复和页码定位的技术实现；本任务只负责发布 Gate，不新增产品功能。"
+scope:
+  - "在全新临时目录和 SQLite 数据库上验证 migration 001–006、API、Worker、Web、真实 PDF、Mock Guided Learning、快速问答、刷新/重启恢复、RETRY、EDIT_ANSWER、PDF 恢复和 Evidence 页码跳转。"
+  - "记录自动化发布 Gate、fake provider 集成、secret 边界、loopback/CORS/PDF endpoint 安全检查和发布材料。"
+  - "检查真实 BYOK 凭据是否已由安全环境提供；没有凭据时记录 BLOCKED_BY_MISSING_USER_CREDENTIALS，不伪造通过。"
+  - "记录浏览器真实 BYOK、Evidence 人工抽查、产品负责人批准和最终 V1.0 发布判定。"
+out_of_scope:
+  - "新产品功能、OCR、第二/第三学习阶段、ANALYZE、TRANSFER、多篇论文、远程部署、多用户、知识图谱、写作辅助、团队协作、UI 重构。"
+dependencies:
+  - task_id: T-W1-017
+    reason: "依赖已进入 main 的 Real BYOK and Evidence Grounding 技术实现。"
+writable_paths:
+  - docs/tasks/backlog/T-W1-018-v1-release-gate.yaml
+  - docs/acceptance/v1-release-gate.md
+  - docs/releases/v1.0.0-release-notes.md
+  - docs/operations/wave1-local-runbook.md
+  - docs/CURRENT_STATE.md
+  - docs/devlog/2026-07-17.md
+  - docs/devlog/INDEX.md
+  - README.md
+read_only_paths:
+  - apps/api/migrations/001_wave1_minimum.sql
+  - apps/api/migrations/002_question_answer_workflow.sql
+  - apps/api/migrations/003_document_pages.sql
+  - apps/api/migrations/004_guided_learning_runtime.sql
+  - apps/api/migrations/005_guided_learning_worker_jobs.sql
+  - apps/api/migrations/006_guided_learning_provider_config.sql
+  - tests/fixtures/pdf/synthetic-text.pdf
+forbidden_paths:
+  - apps/**
+  - packages/**
+  - tests/**
+  - scripts/**
+contract_version: "guided-learning.v1 + model-gateway.v1 + api.v1"
+acceptance_criteria:
+  - "AUTOMATED_RELEASE_GATE 为 PASS：planning 当前 19 tasks（合并前 main 为 18）、runtime integration 26/26、BYOK/Evidence 定向 13/13、npm test 24/24、Playwright 3/3、lint、typecheck、contract、build、smoke、security 和 git diff --check 均通过。"
+  - "migration 001–006 在全新 SQLite 上成功；schema version 为 6，provider config 表存在且只保存白名单字段。"
+  - "API key 不进入 SQLite、Job、Session snapshot、API response、日志、URL、Git 工作区或发布材料；PDF endpoint 不接受任意文件路径；默认监听和 CORS 保持 loopback 安全边界。"
+  - "真实外部 BYOK、浏览器真实 BYOK、Evidence 人工抽查和产品负责人批准分别记录 PASS 或准确阻塞状态；fake provider 和 Mock 不得替代真实验收。"
+  - "缺少凭据时 V1_RELEASE_STATUS 必须为 BLOCKED_BY_MISSING_USER_CREDENTIALS 或 RELEASE_CANDIDATE_AWAITING_REAL_BYOK_ACCEPTANCE，不得标记 ACCEPTED、RELEASED 或 v1.0.0。"
+manual_acceptance:
+  - "已有安全配置的 provider、HTTPS base_url、model 和 WORKFLOW_BYOK_API_KEY 时，执行连接测试及四类 Guided Learning 真实生成闭环。"
+  - "逐项检查方向、问题、点评、Reference Answer、Evidence、Summary、刷新/重启恢复、RETRY、EDIT_ANSWER、快速问答和 PDF 页码跳转。"
+  - "人工判断 Evidence claim 与 quote 的合理相关性；服务端只保证 source verification，不宣称自动完成语义蕴含证明。"
+security_considerations:
+  - "只检查凭据是否存在、provider 名称、model 名称和脱敏 endpoint；不得输出 key、Authorization header、完整环境变量、prompt 或 provider 原始响应。"
+  - "不得提交 .env、数据库、content root、用户 PDF、日志、trace、截图或构建产物。"
+risks:
+  - risk: "当前环境没有用户真实 BYOK 凭据。"
+    mitigation: "记录 BLOCKED_BY_MISSING_USER_CREDENTIALS，继续完成自动化 Gate 和发布材料，不把 fake provider 写成真实通过。"
+  - risk: "真实模型输出的语义质量无法由 source verification 自动证明。"
+    mitigation: "保留人工 Evidence 抽查和产品负责人批准作为发布前置条件。"
+completion_criteria:
+  - "自动化 Gate 和发布材料完成，工作区干净且无敏感产物。"
+  - "有真实凭据时完成真实 BYOK 与浏览器人工验收；无凭据时保留明确阻塞状态。"
+  - "不自动创建 tag、GitHub Release 或 PR；等待人类项目负责人明确决定。"
