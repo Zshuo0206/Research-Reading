@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createApiRuntime } from "../../../apps/api/src/runtime.js";
 import { createWorkerRuntime } from "../../../apps/worker/src/runtime.js";
+import {
+  resolveClaim,
+  type GuidedLearningEvidenceResolutionEvent,
+  type GuidedLearningEvidenceResolutionLogger,
+} from "../../../apps/worker/src/workflow/guided-learning.js";
 import { OpenAICompatibleByokGateway } from "../../../packages/model-gateway/src/openai-compatible.js";
 import { RuntimeSecretResolver, SessionMemorySecretStore } from "../../../packages/runtime-secrets/src/index.js";
 
@@ -80,6 +85,7 @@ describe("Guided Learning real BYOK-shaped generation", () => {
     const requests: Array<{ operation: string; input: Record<string, unknown> }> = [];
     const testKey = ["fake", "test", "secret"].join("-");
     const loggerEvents: unknown[] = [];
+    const evidenceEvents: GuidedLearningEvidenceResolutionEvent[] = [];
     const fakeHttp = async (_input: string | URL | Request, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${testKey}`);
       const body = JSON.parse(String(init?.body)) as { messages?: Array<{ content?: string }> };
@@ -99,7 +105,7 @@ describe("Guided Learning real BYOK-shaped generation", () => {
             : { key_mastery_points: ["模型总结的掌握点"], major_weak_points: ["模型指出的薄弱点"], next_stage_hint: "模型建议继续复习。" };
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }), { status: 200, headers: { "content-type": "application/json" } });
     };
-    const worker = createWorkerRuntime("byok-worker", databasePath, { byokHttpClient: fakeHttp, byokEnvironment: { WORKFLOW_BYOK_API_KEY: testKey }, byokLogger: { log: (event) => loggerEvents.push(event) } });
+    const worker = createWorkerRuntime("byok-worker", databasePath, { byokHttpClient: fakeHttp, byokEnvironment: { WORKFLOW_BYOK_API_KEY: testKey }, byokLogger: { log: (event) => loggerEvents.push(event) }, guidedLearningEvidenceResolutionLogger: { log: (event) => evidenceEvents.push(event) } });
     const created = api.guidedLearningHandlers.create({
       project_id: "proj_byok",
       document_version_id: "docv_byok",
@@ -148,6 +154,12 @@ describe("Guided Learning real BYOK-shaped generation", () => {
     expect(feedbackQuestion.evidence).toHaveLength(1);
     expect(feedbackQuestion.reference_answer.claims).toHaveLength(2);
     expect(feedbackQuestion.reference_answer.claims[0]?.evidence_refs).toEqual(feedbackQuestion.reference_answer.claims[1]?.evidence_refs);
+    expect(evidenceEvents).toHaveLength(2);
+    expect(evidenceEvents.map((event) => [event.claim_index, event.resolution_reason, event.exact_match_count_bucket])).toEqual([
+      [0, "VERIFIED", "ONE"],
+      [1, "VERIFIED", "ONE"],
+    ]);
+    expect(evidenceEvents.every((event) => event.operation === "GUIDED_LEARNING_FEEDBACK_GENERATION")).toBe(true);
     const summaryInput = requests.find((request) => request.operation === "GENERATE_GUIDED_STAGE_SUMMARY")?.input;
     expect(summaryInput?.question_history).toHaveLength(3);
     expect(summaryInput?.completed_question_orders).toEqual([1]);
@@ -166,18 +178,22 @@ describe("Guided Learning real BYOK-shaped generation", () => {
     const api = createApiRuntime(databasePath, join(directory, "content"));
     api.storage.createProject("proj_invalid", "Invalid");
     api.storage.createDocument("doc_invalid", "proj_invalid", "paper.pdf");
-    const text = "重复证据。重复证据。";
+    const text = "SECRET_PAGE_TEXT_MARKER 重复证据。重复证据。";
     const hash = createHash("sha256").update(text).digest("hex");
-    api.storage.createDocumentVersion({ documentVersionId: "docv_invalid", documentId: "doc_invalid", sourceSha256: hash, pageCount: 1, extractionProfileVersion: "pdf-text-v1" });
-    api.storage.saveDocumentPages("docv_invalid", [{ pageNumber: 1, canonicalPageText: text, pageTextSha256: hash, extractionProfileVersion: "pdf-text-v1", codePointLength: Array.from(text).length }]);
+    api.storage.createDocumentVersion({ documentVersionId: "SECRET_DOCUMENT_ID_MARKER", documentId: "doc_invalid", sourceSha256: hash, pageCount: 1, extractionProfileVersion: "pdf-text-v1" });
+    api.storage.saveDocumentPages("SECRET_DOCUMENT_ID_MARKER", [{ pageNumber: 1, canonicalPageText: text, pageTextSha256: hash, extractionProfileVersion: "pdf-text-v1", codePointLength: Array.from(text).length }]);
     const gateway = { invoke: async (request: unknown) => {
       const value = request as { operation: string; input?: { context_spans?: Array<{ context_span_id: string }> } };
       if (value.operation === "GENERATE_GUIDED_DIRECTIONS") return response(value.operation, { directions: [{ title: "一", description: "一", selection_basis: "一" }, { title: "二", description: "二", selection_basis: "二" }] });
       if (value.operation === "GENERATE_GUIDED_QUESTIONS") return response(value.operation, { questions: [{ text: "一？" }, { text: "二？" }, { text: "三？" }] });
-      return response(value.operation, { status: "SUCCESS", summary: "无效证据", omissions: [], reference_answer: "无法确认", claims: [{ text: "无法确认", claim_type: "PAPER_FACT", context_span_id: value.input?.context_spans?.[0]?.context_span_id ?? "context_missing", evidence_quote_candidate: "不存在的引用" }] });
+      return response(value.operation, { status: "SUCCESS", summary: "SECRET_FEEDBACK_SUMMARY_MARKER", omissions: [], reference_answer: "SECRET_REFERENCE_ANSWER_MARKER", claims: [
+        { text: "SECRET_CLAIM_TEXT_MARKER", claim_type: "PAPER_FACT", context_span_id: value.input?.context_spans?.[0]?.context_span_id ?? "context_missing", evidence_quote_candidate: "SECRET_QUOTE_MARKER" },
+        { text: "SECRET_CLAIM_TEXT_MARKER", claim_type: "INSUFFICIENT_EVIDENCE" },
+      ] });
     } };
-    const worker = createWorkerRuntime("invalid-worker", databasePath, { guidedLearningGateway: gateway });
-    const created = api.guidedLearningHandlers.create({ project_id: "proj_invalid", document_version_id: "docv_invalid", learning_goal: "验证 Evidence", provider_config: provider });
+    const evidenceEvents: GuidedLearningEvidenceResolutionEvent[] = [];
+    const worker = createWorkerRuntime("invalid-worker", databasePath, { guidedLearningGateway: gateway, guidedLearningEvidenceResolutionLogger: { log: (event) => evidenceEvents.push(event) } });
+    const created = api.guidedLearningHandlers.create({ project_id: "proj_invalid", document_version_id: "SECRET_DOCUMENT_ID_MARKER", learning_goal: "验证 Evidence", provider_config: provider });
     await worker.jobRuntime.runOnce();
     let session = api.guidedLearningRuntime.getSession(created.session.session_id);
     await command(api, session.session_id, "SELECT_DIRECTION", { direction_id: session.candidate_directions[0].direction_id });
@@ -185,15 +201,130 @@ describe("Guided Learning real BYOK-shaped generation", () => {
     await worker.jobRuntime.runOnce();
     session = api.guidedLearningRuntime.getSession(session.session_id);
     const question = session.questions?.[0];
-    await command(api, session.session_id, "SUBMIT_ANSWER", { question_id: question?.question_id, question_order: question?.order, answer: "回答" });
+    await command(api, session.session_id, "SUBMIT_ANSWER", { question_id: question?.question_id, question_order: question?.order, answer: "SECRET_USER_ANSWER_MARKER" });
     await worker.jobRuntime.runOnce();
     session = api.guidedLearningRuntime.getSession(session.session_id);
     const insufficientQuestion = session.questions?.[0] as unknown as { evidence: unknown[]; reference_answer: { claims: Array<{ claim_type: string }> } };
     expect(insufficientQuestion.evidence).toEqual([]);
     expect(insufficientQuestion.reference_answer.claims[0]?.claim_type).toBe("INSUFFICIENT_EVIDENCE");
+    expect(insufficientQuestion.reference_answer.claims[1]?.claim_type).toBe("INSUFFICIENT_EVIDENCE");
+    expect(evidenceEvents.map((event) => [event.claim_index, event.resolution_reason, event.exact_match_count_bucket])).toEqual([
+      [0, "QUOTE_NOT_FOUND", "ZERO"],
+      [1, "MODEL_INSUFFICIENT_EVIDENCE", "NOT_CHECKED"],
+    ]);
+    const serializedEvents = JSON.stringify(evidenceEvents);
+    for (const marker of [
+      "SECRET_USER_ANSWER_MARKER",
+      "SECRET_CLAIM_TEXT_MARKER",
+      "SECRET_QUOTE_MARKER",
+      "SECRET_PAGE_TEXT_MARKER",
+      "SECRET_CONTEXT_ID_MARKER",
+      "SECRET_DOCUMENT_ID_MARKER",
+      "SECRET_API_KEY_MARKER",
+      "SECRET_FEEDBACK_SUMMARY_MARKER",
+      "SECRET_REFERENCE_ANSWER_MARKER",
+    ]) expect(serializedEvents).not.toContain(marker);
     worker.database.close();
     api.database.close();
     await rm(directory, { recursive: true, force: true });
+  });
+
+  it("classifies every Evidence resolution branch without exposing claim or source text", () => {
+    const context = {
+      context_span_id: "SECRET_CONTEXT_ID_MARKER",
+      document_version_id: "SECRET_DOCUMENT_ID_MARKER",
+      page_number: 7,
+      text: "abc abc unique quote",
+      page_text_sha256: "a".repeat(64),
+      extraction_profile_version: "pdf-text-v1",
+    };
+    const claim = (overrides: Record<string, unknown>) => ({
+      text: "SECRET_CLAIM_TEXT_MARKER",
+      claim_type: "PAPER_FACT",
+      context_span_id: context.context_span_id,
+      evidence_quote_candidate: "unique quote",
+      ...overrides,
+    });
+    const missingQuoteClaim = { ...claim({}) } as Record<string, unknown>;
+    delete missingQuoteClaim.evidence_quote_candidate;
+    const results = [
+      resolveClaim({ text: "SECRET_CLAIM_TEXT_MARKER", claim_type: "INSUFFICIENT_EVIDENCE" }, [context], context.document_version_id),
+      resolveClaim(claim({ context_span_id: "" }), [context], context.document_version_id),
+      resolveClaim(claim({ context_span_id: "missing_context" }), [context], context.document_version_id),
+      resolveClaim(claim({ evidence_quote_candidate: "unique quote" }), [{ ...context, document_version_id: "other_document" }], context.document_version_id),
+      resolveClaim(missingQuoteClaim, [context], context.document_version_id),
+      resolveClaim(claim({ evidence_quote_candidate: "" }), [context], context.document_version_id),
+      resolveClaim(claim({ evidence_quote_candidate: "a" }), [context], context.document_version_id),
+      resolveClaim(claim({ evidence_quote_candidate: "x".repeat(1001) }), [context], context.document_version_id),
+      resolveClaim(claim({ evidence_quote_candidate: "xyz" }), [context], context.document_version_id),
+      resolveClaim(claim({ evidence_quote_candidate: "abc" }), [context], context.document_version_id),
+      resolveClaim(claim({ evidence_quote_candidate: "unique quote" }), [context], context.document_version_id),
+    ];
+    expect(results.map((result) => result.diagnostic.resolution_reason)).toEqual([
+      "MODEL_INSUFFICIENT_EVIDENCE",
+      "CONTEXT_SPAN_ID_MISSING",
+      "CONTEXT_SPAN_NOT_FOUND",
+      "DOCUMENT_VERSION_MISMATCH",
+      "QUOTE_MISSING",
+      "QUOTE_MISSING",
+      "QUOTE_TOO_SHORT",
+      "QUOTE_TOO_LONG",
+      "QUOTE_NOT_FOUND",
+      "QUOTE_NOT_UNIQUE",
+      "VERIFIED",
+    ]);
+    expect(results.map((result) => result.diagnostic.exact_match_count_bucket)).toEqual([
+      "NOT_CHECKED",
+      "NOT_CHECKED",
+      "NOT_CHECKED",
+      "NOT_CHECKED",
+      "NOT_CHECKED",
+      "NOT_CHECKED",
+      "NOT_CHECKED",
+      "NOT_CHECKED",
+      "ZERO",
+      "MULTIPLE",
+      "ONE",
+    ]);
+    expect(results[0]?.diagnostic.context_span_id_present).toBeUndefined();
+    expect(results[10]?.diagnostic.resolution_outcome).toBe("VERIFIED");
+    expect(results[10]?.evidence).toMatchObject({
+      context_span_id: context.context_span_id,
+      document_version_id: context.document_version_id,
+      page_number: 7,
+      char_start: 8,
+      char_end: 20,
+      quote: "unique quote",
+      verification_status: "VERIFIED",
+    });
+    expect(JSON.stringify(results.map((result) => result.diagnostic))).not.toContain("SECRET_");
+  });
+
+  it("isolates logger failures and preserves the normal feedback result", async () => {
+    const normal = await runSingleFeedbackScenario({ log: () => undefined });
+    const capturedEvents: GuidedLearningEvidenceResolutionEvent[] = [];
+    const withCapturingLogger = await runSingleFeedbackScenario({ log: (event) => capturedEvents.push(event) });
+    const withThrowingLogger = await runSingleFeedbackScenario({ log: () => { throw new Error("diagnostic logger failure"); } });
+    const comparable = (session: Awaited<ReturnType<typeof runSingleFeedbackScenario>>) => ({
+      state: session.state,
+      session_revision: session.session_revision,
+      state_version: session.state_version,
+      current_question_order: session.current_question_order,
+      questions: (session.questions as unknown as Array<Record<string, unknown>> | undefined)?.map((question) => ({
+        order: question.order,
+        status: question.status,
+        feedback: question.feedback,
+        reference_answer: question.reference_answer,
+        evidence: question.evidence,
+      })),
+    });
+    expect(comparable(withCapturingLogger)).toEqual(comparable(normal));
+    expect(comparable(withThrowingLogger)).toEqual(comparable(normal));
+    expect(capturedEvents).toHaveLength(1);
+    expect(withThrowingLogger.state).toBe("FEEDBACK_READY");
+    const question = withThrowingLogger.questions?.[0] as unknown as { evidence?: unknown[]; reference_answer?: { claims?: unknown[] } } | undefined;
+    expect(question?.evidence).toHaveLength(1);
+    expect(question?.reference_answer?.claims).toHaveLength(1);
   });
 });
 
@@ -203,4 +334,39 @@ async function command(api: ReturnType<typeof createApiRuntime>, sessionId: stri
 
 function response(operation: string, output: unknown) {
   return { schema_version: "model-gateway.v1", message_kind: "RESPONSE", operation, output };
+}
+
+async function runSingleFeedbackScenario(logger: GuidedLearningEvidenceResolutionLogger) {
+  const directory = await mkdtemp(join(tmpdir(), "research-reading-diagnostics-"));
+  const databasePath = join(directory, "runtime.sqlite");
+  const api = createApiRuntime(databasePath, join(directory, "content"));
+  api.storage.createProject("proj_diagnostics", "Diagnostics");
+  api.storage.createDocument("doc_diagnostics", "proj_diagnostics", "paper.pdf");
+  const text = "唯一证据引用";
+  const hash = createHash("sha256").update(text).digest("hex");
+  api.storage.createDocumentVersion({ documentVersionId: "docv_diagnostics", documentId: "doc_diagnostics", sourceSha256: hash, pageCount: 1, extractionProfileVersion: "pdf-text-v1" });
+  api.storage.saveDocumentPages("docv_diagnostics", [{ pageNumber: 1, canonicalPageText: text, pageTextSha256: hash, extractionProfileVersion: "pdf-text-v1", codePointLength: Array.from(text).length }]);
+  const gateway = { invoke: async (request: unknown) => {
+    const value = request as { operation: string; input?: { context_spans?: Array<{ context_span_id: string; text: string }> } };
+    if (value.operation === "GENERATE_GUIDED_DIRECTIONS") return response(value.operation, { directions: [{ title: "一", description: "一", selection_basis: "一" }, { title: "二", description: "二", selection_basis: "二" }] });
+    if (value.operation === "GENERATE_GUIDED_QUESTIONS") return response(value.operation, { questions: [{ text: "一？" }, { text: "二？" }, { text: "三？" }] });
+    const span = value.input?.context_spans?.[0];
+    return response(value.operation, { status: "SUCCESS", summary: "点评", omissions: [], reference_answer: "参考", claims: [{ text: "主张", claim_type: "PAPER_FACT", context_span_id: span?.context_span_id, evidence_quote_candidate: span?.text }] });
+  } };
+  const worker = createWorkerRuntime("diagnostics-worker", databasePath, { guidedLearningGateway: gateway, guidedLearningEvidenceResolutionLogger: logger });
+  const created = api.guidedLearningHandlers.create({ project_id: "proj_diagnostics", document_version_id: "docv_diagnostics", learning_goal: "验证诊断", provider_config: provider });
+  await worker.jobRuntime.runOnce();
+  let session = api.guidedLearningRuntime.getSession(created.session.session_id);
+  await command(api, session.session_id, "SELECT_DIRECTION", { direction_id: session.candidate_directions[0].direction_id });
+  await command(api, session.session_id, "START_STAGE", { stage_id: "UNDERSTAND" });
+  await worker.jobRuntime.runOnce();
+  session = api.guidedLearningRuntime.getSession(session.session_id);
+  const question = session.questions?.[0];
+  await command(api, session.session_id, "SUBMIT_ANSWER", { question_id: question?.question_id, question_order: question?.order, answer: "回答" });
+  await worker.jobRuntime.runOnce();
+  const result = api.guidedLearningRuntime.getSession(session.session_id);
+  worker.database.close();
+  api.database.close();
+  await rm(directory, { recursive: true, force: true });
+  return result;
 }

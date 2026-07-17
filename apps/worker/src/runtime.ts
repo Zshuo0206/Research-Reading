@@ -32,13 +32,20 @@ import {
   type TextPdfExtractor,
 } from "./workflow/document-import.js";
 import { createGuidedLearningJobHandlers } from "./workflow/guided-learning.js";
-import type { GuidedLearningWorkerModelGateway } from "./workflow/guided-learning.js";
+import type {
+  GuidedLearningEvidenceResolutionLogger,
+  GuidedLearningWorkerModelGateway,
+} from "./workflow/guided-learning.js";
 
 const migrationsDirectory = fileURLToPath(
   new URL("../../api/migrations/", import.meta.url),
 );
 
 const DEFAULT_BYOK_LOGGER: ByokGatewayLogger = {
+  log: (event) => console.error(JSON.stringify(event)),
+};
+
+const DEFAULT_GUIDED_LEARNING_EVIDENCE_RESOLUTION_LOGGER: GuidedLearningEvidenceResolutionLogger = {
   log: (event) => console.error(JSON.stringify(event)),
 };
 
@@ -57,6 +64,7 @@ export function createWorkerRuntime(
     byokHttpClient?: HttpClient;
     byokEnvironment?: Readonly<Record<string, string | undefined>>;
     byokLogger?: ByokGatewayLogger;
+    guidedLearningEvidenceResolutionLogger?: GuidedLearningEvidenceResolutionLogger;
   } = {},
 ): WorkerRuntime {
   const database = openDatabase(databasePath, { migrationsDirectory });
@@ -94,6 +102,8 @@ export function createWorkerRuntime(
       repository: new GuidedLearningSessionRepository(database),
       storage,
       gateway: options.guidedLearningGateway ?? gateway,
+      evidenceResolutionLogger:
+        options.guidedLearningEvidenceResolutionLogger ?? DEFAULT_GUIDED_LEARNING_EVIDENCE_RESOLUTION_LOGGER,
     }),
   };
 

@@ -18,6 +18,64 @@ import type { JobHandler } from "../runtime/job-runtime.js";
 
 type Value = Record<string, unknown>;
 
+export type GuidedLearningEvidenceResolutionReason =
+  | "MODEL_INSUFFICIENT_EVIDENCE"
+  | "CONTEXT_SPAN_ID_MISSING"
+  | "CONTEXT_SPAN_NOT_FOUND"
+  | "DOCUMENT_VERSION_MISMATCH"
+  | "QUOTE_MISSING"
+  | "QUOTE_TOO_SHORT"
+  | "QUOTE_TOO_LONG"
+  | "QUOTE_NOT_FOUND"
+  | "QUOTE_NOT_UNIQUE"
+  | "VERIFIED";
+
+export type GuidedLearningEvidenceResolutionOutcome =
+  | "VERIFIED"
+  | "INSUFFICIENT_EVIDENCE";
+
+export type GuidedLearningEvidenceExactMatchCountBucket =
+  | "NOT_CHECKED"
+  | "ZERO"
+  | "ONE"
+  | "MULTIPLE";
+
+export interface GuidedLearningEvidenceResolutionEvent {
+  event: "guided_feedback_evidence_resolution";
+  operation: "GUIDED_LEARNING_FEEDBACK_GENERATION";
+  claim_index: number;
+  model_claim_type: string;
+  resolution_outcome: GuidedLearningEvidenceResolutionOutcome;
+  resolution_reason: GuidedLearningEvidenceResolutionReason;
+  context_span_id_present?: boolean;
+  context_span_found?: boolean;
+  document_version_matches?: boolean;
+  quote_present?: boolean;
+  quote_codepoint_length?: number;
+  exact_match_count_bucket: GuidedLearningEvidenceExactMatchCountBucket;
+  page_number?: number;
+}
+
+export interface GuidedLearningEvidenceResolutionLogger {
+  log(event: GuidedLearningEvidenceResolutionEvent): void;
+}
+
+type GuidedLearningEvidenceResolutionMetadata = Omit<
+  GuidedLearningEvidenceResolutionEvent,
+  "event" | "operation" | "claim_index"
+>;
+
+export interface GuidedLearningClaimResolution {
+  text: string;
+  claim_type: string;
+  evidence?: Value;
+  diagnostic: GuidedLearningEvidenceResolutionMetadata;
+}
+
+const NOOP_EVIDENCE_RESOLUTION_LOGGER: GuidedLearningEvidenceResolutionLogger = {
+  log: () => undefined,
+};
+
 export interface GuidedLearningWorkerModelGateway {
   invoke(request: unknown): Promise<unknown>;
 }
@@ -27,13 +85,15 @@ export function createGuidedLearningJobHandlers(input: {
   storage: StorageRepository;
   gateway: GuidedLearningWorkerModelGateway;
   now?: () => string;
+  evidenceResolutionLogger?: GuidedLearningEvidenceResolutionLogger;
 }): Partial<Record<GuidedLearningJobKind, JobHandler>> {
   const now = input.now ?? (() => new Date().toISOString());
+  const evidenceResolutionLogger = input.evidenceResolutionLogger ?? NOOP_EVIDENCE_RESOLUTION_LOGGER;
   const handler = (operation: GuidedLearningJobKind): JobHandler =>
     async (rawPayload) => {
       const payload = parsePayload(rawPayload, operation);
       try {
-        return await runGeneration(input, payload, now);
+        return await runGeneration({ ...input, evidenceResolutionLogger }, payload, now);
       } catch (error) {
         await recordFailureIfCurrent(input.repository, payload, error, now);
         throw error;
@@ -48,7 +108,12 @@ export function createGuidedLearningJobHandlers(input: {
 }
 
 async function runGeneration(
-  input: { repository: GuidedLearningSessionRepository; storage: StorageRepository; gateway: GuidedLearningWorkerModelGateway },
+  input: {
+    repository: GuidedLearningSessionRepository;
+    storage: StorageRepository;
+    gateway: GuidedLearningWorkerModelGateway;
+    evidenceResolutionLogger: GuidedLearningEvidenceResolutionLogger;
+  },
   payload: GuidedLearningGenerationJobPayload,
   now: () => string,
 ): Promise<unknown> {
@@ -92,6 +157,7 @@ async function runGeneration(
             payload,
             await invokeGuided(input.gateway, "GENERATE_GUIDED_FEEDBACK", payload, contexts, session),
             contexts,
+            input.evidenceResolutionLogger,
           );
       break;
     case "GUIDED_LEARNING_STAGE_SUMMARY_GENERATION":
@@ -216,13 +282,23 @@ function withModelFeedback(
   payload: GuidedLearningGenerationJobPayload,
   output: Value,
   contexts: Value[],
+  evidenceResolutionLogger: GuidedLearningEvidenceResolutionLogger,
 ): GuidedLearningSession {
   const current = currentQuestion(session);
   const rawClaims = Array.isArray(output.claims) ? output.claims : [];
   if (!rawClaims.length) throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model feedback has no claims");
   if (output.status !== "SUCCESS" && output.status !== "INSUFFICIENT_EVIDENCE")
     throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model feedback status is invalid", false);
-  const resolved = rawClaims.map((claim) => resolveClaim(claim, contexts, payload.document_version_id));
+  const resolved = rawClaims.map((claim, claimIndex) => {
+    const result = resolveClaim(claim, contexts, payload.document_version_id);
+    safeLogEvidenceResolution(evidenceResolutionLogger, {
+      event: "guided_feedback_evidence_resolution",
+      operation: "GUIDED_LEARNING_FEEDBACK_GENERATION",
+      claim_index: claimIndex,
+      ...result.diagnostic,
+    });
+    return result;
+  });
   const evidenceByKey = new Map<string, Value>();
   for (const item of resolved) {
     if (item.evidence) {
@@ -486,32 +562,75 @@ function extractOutput(value: unknown, operation: string): Value {
   return value.output;
 }
 
-function resolveClaim(
+export function resolveClaim(
   claim: unknown,
   contexts: Value[],
   documentVersionId: string,
-): { text: string; claim_type: string; evidence?: Value } {
+): GuidedLearningClaimResolution {
   if (!isRecord(claim) || typeof claim.text !== "string" || typeof claim.claim_type !== "string")
     throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model claim output is malformed");
   if (!["PAPER_FACT", "AUTHOR_CLAIM", "AGENT_INFERENCE", "INSUFFICIENT_EVIDENCE"].includes(claim.claim_type))
     throw new GuidedLearningWorkerError("VALIDATION_FAILED", "Model claim_type is invalid");
   if (claim.claim_type === "INSUFFICIENT_EVIDENCE")
-    return { text: claim.text, claim_type: "INSUFFICIENT_EVIDENCE" };
-  const contextId = typeof claim.context_span_id === "string" ? claim.context_span_id : "";
+    return insufficientClaimResolution(claim, "MODEL_INSUFFICIENT_EVIDENCE");
+  const contextIdPresent = typeof claim.context_span_id === "string" && claim.context_span_id.length > 0;
+  if (!contextIdPresent)
+    return insufficientClaimResolution(claim, "CONTEXT_SPAN_ID_MISSING", {
+      context_span_id_present: false,
+    });
+  const contextId = claim.context_span_id as string;
   const candidate = contexts.find((item) => item.context_span_id === contextId);
+  if (!candidate)
+    return insufficientClaimResolution(claim, "CONTEXT_SPAN_NOT_FOUND", {
+      context_span_id_present: true,
+      context_span_found: false,
+    });
+  const contextMetadata = {
+    context_span_id_present: true,
+    context_span_found: true,
+    page_number: Number(candidate.page_number),
+  };
+  if (String(candidate.document_version_id) !== documentVersionId)
+    return insufficientClaimResolution(claim, "DOCUMENT_VERSION_MISMATCH", {
+      ...contextMetadata,
+      document_version_matches: false,
+    });
   const quote = typeof claim.evidence_quote_candidate === "string" ? claim.evidence_quote_candidate : "";
-  if (!candidate || String(candidate.document_version_id) !== documentVersionId || !quote)
-    return { text: claim.text, claim_type: "INSUFFICIENT_EVIDENCE" };
+  const quotePresent = quote.length > 0;
+  if (!quotePresent)
+    return insufficientClaimResolution(claim, "QUOTE_MISSING", {
+      ...contextMetadata,
+      document_version_matches: true,
+      quote_present: false,
+      quote_codepoint_length: 0,
+    });
   const pageText = Array.from(String(candidate.text));
   const quotePoints = Array.from(quote);
-  if (quotePoints.length < 3 || quotePoints.length > 1000)
-    return { text: claim.text, claim_type: "INSUFFICIENT_EVIDENCE" };
+  const quoteMetadata = {
+    ...contextMetadata,
+    document_version_matches: true,
+    quote_present: true,
+    quote_codepoint_length: quotePoints.length,
+  };
+  if (quotePoints.length < 3)
+    return insufficientClaimResolution(claim, "QUOTE_TOO_SHORT", quoteMetadata);
+  if (quotePoints.length > 1000)
+    return insufficientClaimResolution(claim, "QUOTE_TOO_LONG", quoteMetadata);
   const matches: number[] = [];
   for (let index = 0; index <= pageText.length - quotePoints.length; index++) {
     if (quotePoints.every((point, offset) => pageText[index + offset] === point)) matches.push(index);
   }
-  if (matches.length !== 1)
-    return { text: claim.text, claim_type: "INSUFFICIENT_EVIDENCE" };
+  const exactMatchCountBucket = matches.length === 0 ? "ZERO" : matches.length === 1 ? "ONE" : "MULTIPLE";
+  if (matches.length === 0)
+    return insufficientClaimResolution(claim, "QUOTE_NOT_FOUND", {
+      ...quoteMetadata,
+      exact_match_count_bucket: exactMatchCountBucket,
+    });
+  if (matches.length > 1)
+    return insufficientClaimResolution(claim, "QUOTE_NOT_UNIQUE", {
+      ...quoteMetadata,
+      exact_match_count_bucket: exactMatchCountBucket,
+    });
   const start = matches[0];
   const evidenceId = `evidence_guided_${createHash("sha256").update(`${contextId}:${start}:${quote}`).digest("hex").slice(0, 24)}`;
   return {
@@ -529,7 +648,43 @@ function resolveClaim(
       quote,
       verification_status: "VERIFIED",
     },
+    diagnostic: {
+      model_claim_type: claim.claim_type,
+      resolution_outcome: "VERIFIED",
+      resolution_reason: "VERIFIED",
+      ...quoteMetadata,
+      exact_match_count_bucket: "ONE",
+    },
   };
+}
+
+function insufficientClaimResolution(
+  claim: Value,
+  reason: GuidedLearningEvidenceResolutionReason,
+  metadata: Partial<GuidedLearningEvidenceResolutionMetadata> = {},
+): GuidedLearningClaimResolution {
+  return {
+    text: claim.text as string,
+    claim_type: "INSUFFICIENT_EVIDENCE",
+    diagnostic: {
+      model_claim_type: claim.claim_type as string,
+      resolution_outcome: "INSUFFICIENT_EVIDENCE",
+      resolution_reason: reason,
+      exact_match_count_bucket: "NOT_CHECKED",
+      ...metadata,
+    },
+  };
+}
+
+function safeLogEvidenceResolution(
+  logger: GuidedLearningEvidenceResolutionLogger,
+  event: GuidedLearningEvidenceResolutionEvent,
+): void {
+  try {
+    logger.log(event);
+  } catch {
+    // Diagnostics are observational and must never affect the feedback result.
+  }
 }
 
 function parsePayload(value: unknown, operation: GuidedLearningJobKind): GuidedLearningGenerationJobPayload {
