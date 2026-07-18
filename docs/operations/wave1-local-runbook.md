@@ -28,6 +28,21 @@ npm run build
 
 ## 启动本地服务
 
+推荐使用仓库脚本；它只监听 loopback，把状态、日志、默认 SQLite 和 content root 放在已忽略的 `tmp/v1-local/`，并记录自己创建的 PID 与启动时间：
+
+```powershell
+.\scripts\start-v1-local.ps1
+.\scripts\check-v1-local.ps1
+```
+
+打开 `http://127.0.0.1:4173`。停止时：
+
+```powershell
+.\scripts\stop-v1-local.ps1
+```
+
+stop 脚本只停止状态文件中 PID 与启动时间均匹配的三个进程；PID 已复用时会保留该进程。数据库、content 和日志默认保留，不会递归删除。
+
 为本次运行建立明确的数据目录；不要把路径指向用户已有数据库：
 
 ```powershell
@@ -69,11 +84,22 @@ API 默认只监听 `127.0.0.1`。不要设置 `API_HOST=0.0.0.0`，也不要将
 
 真实 BYOK 只在本地人工验收时执行。必须由操作员安全提供 provider、HTTPS endpoint、model 和 API key；不要把 key 写入聊天、代码、提交、URL、SQLite 或日志。
 
-当前 Session Memory secret 仅用于当前 API 进程内的开发连接测试；API 与 Worker 不共享这段内存 secret。真实 Guided Learning Job 使用运行时环境变量 `WORKFLOW_BYOK_API_KEY`，API 环境连接测试和 Worker 必须在各自进程中配置同一环境变量。Web 只提交 provider/base_url/model/limits，不提交 key、runtime_secret_ref 或环境变量名；真实请求须经本地 API，不允许浏览器直连供应商。Mock 仍可作为默认模式，但不能代替真实 BYOK 发布证据。没有用户凭据时只能记录 `BLOCKED_BY_MISSING_USER_CREDENTIALS`。
+V1 默认关闭浏览器 Session Memory secret 端点；真实 Guided Learning Job 使用运行时环境变量 `WORKFLOW_BYOK_API_KEY`，API 环境连接测试和 Worker 必须在各自进程中配置同一环境变量。Web 只提交 provider/base_url/model/limits，不提交 key、runtime_secret_ref 或环境变量名；真实请求须经本地 API，不允许浏览器直连供应商。只有本地开发确有需要时才设置 `ENABLE_BROWSER_SESSION_KEY=1`，该内存 secret 仍不会在 API 与 Worker 间共享。Mock 仍可作为默认模式，但不能代替真实 BYOK 发布证据。没有用户凭据时只能记录 `BLOCKED_BY_MISSING_USER_CREDENTIALS`。
+
+Evidence 中的 `VERIFIED` 只代表引用位置与原文字符串通过 exact-match 核验，不代表模型 claim 的解释、推理或科研结论已被系统确认。
 
 自动化 Playwright 只覆盖 BYOK 控件和 Mock Guided Learning UI 流程（含刷新恢复）；它不会把 fake API route 伪装成真实外部 BYOK，真实浏览器 BYOK E2E 记录为 `BROWSER_REAL_BYOK_E2E_NOT_EXECUTED`。真实人工验收前，必须用用户提供的凭据在本地 API/Worker 进程完成连接测试和最小四 operation 生成闭环。
 
 ## V1.0 Release Gate
+
+
+不访问外部模型的真实本地闭环：
+
+```powershell
+npm run test:v1-smoke
+```
+
+该命令使用临时 SQLite/content root、真实 PDF、实际 loopback HTTP API 和 Worker，完成三题与阶段总结，核对完整 PDF 响应和 exact Evidence，并在结束后清理临时资源。
 
 在全新临时目录和 SQLite 数据库上运行 `npm run build:backend-packages`、planning/check、lint、typecheck、runtime integration、contract、build、Playwright、smoke 和 security scan。自动化通过不等于真实 BYOK 通过；没有安全配置的 `WORKFLOW_BYOK_API_KEY` 时记录 `REAL_BYOK_ACCEPTANCE = BLOCKED_BY_MISSING_USER_CREDENTIALS`，不创建 `v1.0.0` tag 或 GitHub Release。
 
