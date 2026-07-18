@@ -21,6 +21,7 @@
 .guided-learning-evidence { margin-top: .75rem; border-top: 1px solid #e1e6ed; padding-top: .75rem; }
 .guided-learning-evidence blockquote { margin: .5rem 0; padding-left: .75rem; border-left: .2rem solid #8ca2ba; }
 .guided-learning-pdf { width: 100%; min-height: 28rem; border: 1px solid #d7dce5; border-radius: .5rem; background: #f5f7fa; }
+.guided-learning-pdf-toolbar { display: grid; gap: .35rem; margin-top: .5rem; }
 .guided-learning-route { display: grid; gap: .5rem; padding: 0; list-style: none; }
 .guided-learning-route li { display: flex; justify-content: space-between; gap: .75rem; border-bottom: 1px solid #e8ebf0; padding: .45rem 0; }
 @media (max-width: 760px) { .guided-learning-grid { grid-template-columns: 1fr; } .guided-learning-pdf { min-height: 20rem; } }

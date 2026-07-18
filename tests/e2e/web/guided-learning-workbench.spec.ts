@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
 import path from "node:path";
+import { expect, test } from "@playwright/test";
 
 test("covers BYOK controls with a Mock Guided Learning UI flow and restores after refresh", async ({
   page,
@@ -9,6 +9,7 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
   let order = 1;
   let feedbackPending = false;
   const failedOrders = new Set<number>();
+  const failedAdvanceOrders = new Set<number>();
   const questions = [1, 2, 3].map((questionOrder) => ({
     question_id: `guided_question_${questionOrder}`,
     order: questionOrder,
@@ -143,6 +144,26 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
       ],
     });
   };
+  const scheduleBackgroundProgress = (
+    expectedState: string,
+    nextState: string,
+  ) => {
+    setTimeout(() => {
+      if (state !== expectedState) return;
+      if (expectedState === "ANSWER_SUBMITTED" && feedbackPending) {
+        if (!failedOrders.has(order)) {
+          failedOrders.add(order);
+          state = "RETRYABLE_FAILURE";
+        } else {
+          completeFeedback();
+          state = "FEEDBACK_READY";
+        }
+        feedbackPending = false;
+        return;
+      }
+      state = nextState;
+    }, 20);
+  };
 
   await page.route("http://127.0.0.1:4310/api/v1/**", async (route) => {
     const request = route.request();
@@ -194,37 +215,54 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
       url.pathname === "/api/v1/guided-learning/sessions"
     ) {
       data = { session: session(), job_id: "job_direction_web_e2e" };
+      scheduleBackgroundProgress("CREATED", "AWAITING_DIRECTION_SELECTION");
     } else if (
       request.method() === "GET" &&
       url.pathname.endsWith("/guided-learning/sessions/learning_web_e2e")
     ) {
-      if (state === "CREATED") state = "AWAITING_DIRECTION_SELECTION";
-      else if (state === "QUESTIONS_GENERATING") state = "AWAITING_ANSWER";
-      else if (state === "ANSWER_SUBMITTED" && feedbackPending) {
-        if (!failedOrders.has(order)) {
-          state = "RETRYABLE_FAILURE";
-          failedOrders.add(order);
-        } else {
-          completeFeedback();
-          state = "FEEDBACK_READY";
-        }
-      } else if (state === "SUMMARY_GENERATING") state = "STAGE_COMPLETED";
       data = session();
     } else if (
       request.method() === "POST" &&
       url.pathname.endsWith("/commands")
     ) {
       const event = body?.event;
+      const fromState = state;
+      if (
+        event === "ADVANCE_QUESTION" &&
+        order === 2 &&
+        !failedAdvanceOrders.has(order)
+      ) {
+        failedAdvanceOrders.add(order);
+        await route.fulfill({
+          status: 503,
+          headers: corsHeaders,
+          contentType: "application/json",
+          body: JSON.stringify({
+            schema_version: "api.v1",
+            request_id: "req_web_e2e_advance_failure",
+            error: {
+              code: "TEMPORARY_UNAVAILABLE",
+              message: "推进暂时失败，请重试。",
+            },
+          }),
+        });
+        return;
+      }
       revision += 1;
       if (event === "SELECT_DIRECTION") state = "ROUTE_LOCKED";
-      if (event === "START_STAGE") state = "QUESTIONS_GENERATING";
+      if (event === "START_STAGE") {
+        state = "QUESTIONS_GENERATING";
+        scheduleBackgroundProgress("QUESTIONS_GENERATING", "AWAITING_ANSWER");
+      }
       if (event === "SUBMIT_ANSWER" || event === "EDIT_ANSWER") {
         state = "ANSWER_SUBMITTED";
         feedbackPending = true;
+        scheduleBackgroundProgress("ANSWER_SUBMITTED", "FEEDBACK_READY");
       }
       if (event === "RETRY") {
         state = "ANSWER_SUBMITTED";
         feedbackPending = true;
+        scheduleBackgroundProgress("ANSWER_SUBMITTED", "FEEDBACK_READY");
       }
       if (event === "CONFIRM_QUESTION") {
         state = "QUESTION_COMPLETED";
@@ -240,12 +278,15 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
           const next = questions[order - 1];
           if (next) next.status = "ACTIVE";
           state = "AWAITING_ANSWER";
-        } else state = "SUMMARY_GENERATING";
+        } else {
+          state = "SUMMARY_GENERATING";
+          scheduleBackgroundProgress("SUMMARY_GENERATING", "STAGE_COMPLETED");
+        }
       }
       data = {
         outcome: "APPLIED",
         transition: {
-          from_state: state,
+          from_state: fromState,
           to_state: state,
           result_revision: revision,
         },
@@ -284,8 +325,12 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
     );
   await expect(page.getByText("PDF 已就绪")).toBeVisible();
   await page.getByLabel("生成模式").selectOption("BYOK");
-  await expect(page.getByText("API key 不在浏览器中显示、输入或发送")).toBeVisible();
-  await expect(page.getByRole("button", { name: "测试服务端环境连接" })).toBeVisible();
+  await expect(
+    page.getByText("API key 不在浏览器中显示、输入或发送"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "测试服务端环境连接" }),
+  ).toBeVisible();
   await page.getByLabel("生成模式").selectOption("MOCK");
   await page.getByLabel("Learning goal").fill("理解论文的方法设计和关键证据");
   await page
@@ -304,20 +349,45 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
     await page.getByRole("button", { name: "重试生成" }).click();
     await expect(page.getByTestId("guided-feedback-panel")).toBeVisible();
     const evidencePage = question + 4;
-    await expect(page.getByText(`第 ${evidencePage} 页`, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(`第 ${evidencePage} 页`, { exact: true }),
+    ).toBeVisible();
     await expect(page.getByText("Canonical method text.")).toBeVisible();
     const pdfFrame = page.locator('iframe[title="Imported PDF preview"]');
-    await page.getByRole("button", { name: `查看第 ${evidencePage} 页` }).click();
+    const initialNavigationKey = await pdfFrame.getAttribute(
+      "data-navigation-key",
+    );
+    await page
+      .getByRole("button", { name: `查看第 ${evidencePage} 页` })
+      .click();
     await expect(pdfFrame).toHaveAttribute(
       "src",
       new RegExp(`#page=${evidencePage}$`),
     );
-    await page.getByRole("button", { name: `查看第 ${evidencePage} 页` }).click();
+    await expect(page.getByTestId("pdf-page-target")).toHaveText(
+      `当前定位目标：第 ${evidencePage} 页`,
+    );
+    await expect(
+      page.getByRole("link", { name: `在新标签页打开第 ${evidencePage} 页` }),
+    ).toHaveAttribute("href", new RegExp(`#page=${evidencePage}$`));
+    const firstNavigationKey = await pdfFrame.getAttribute(
+      "data-navigation-key",
+    );
+    expect(firstNavigationKey).not.toBe(initialNavigationKey);
+    await page
+      .getByRole("button", { name: `查看第 ${evidencePage} 页` })
+      .click();
     await expect(pdfFrame).toHaveAttribute(
       "src",
       new RegExp(`#page=${evidencePage}$`),
     );
-    expect((await pdfFrame.getAttribute("src"))?.match(/#page=/g)).toHaveLength(1);
+    await expect(pdfFrame).not.toHaveAttribute(
+      "data-navigation-key",
+      firstNavigationKey ?? "",
+    );
+    expect((await pdfFrame.getAttribute("src"))?.match(/#page=/g)).toHaveLength(
+      1,
+    );
     if (question === 1) {
       await page.reload();
       await expect(page.getByTestId("guided-feedback-panel")).toBeVisible();
@@ -325,14 +395,23 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
         "src",
         /\/api\/v1\/document-versions\/docv_web_e2e\/content$/,
       );
-      await page.getByRole("button", { name: `查看第 ${evidencePage} 页` }).click();
+      await page
+        .getByRole("button", { name: `查看第 ${evidencePage} 页` })
+        .click();
       await expect(pdfFrame).toHaveAttribute(
         "src",
         new RegExp(`#page=${evidencePage}$`),
       );
-      expect((await pdfFrame.getAttribute("src"))?.match(/#page=/g)).toHaveLength(1);
+      expect(
+        (await pdfFrame.getAttribute("src"))?.match(/#page=/g),
+      ).toHaveLength(1);
     }
     await page.getByRole("button", { name: "确认并进入下一题" }).click();
+    if (question === 2) {
+      await expect(page.getByText("第 2 题已完成")).toBeVisible();
+      await expect(page.getByText("推进暂时失败，请重试。")).toBeVisible();
+      await page.getByRole("button", { name: "进入下一题" }).click();
+    }
   }
 
   await expect(page.getByTestId("guided-summary-panel")).toBeVisible();

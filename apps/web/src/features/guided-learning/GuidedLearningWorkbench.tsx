@@ -5,11 +5,12 @@ import type {
   GuidedLearningSession,
 } from "../../../../../packages/contracts/wave1/src/index.js";
 import {
-  GuidedLearningApiError,
   GuidedLearningApiClient,
-  pdfSourceWithPage,
-  type Project,
+  GuidedLearningApiError,
   type GuidedProviderConfig,
+  type Project,
+  pdfFrameKey,
+  pdfSourceWithPage,
   type WorkflowJob,
 } from "./api.js";
 import {
@@ -22,7 +23,10 @@ import "./guided-learning.css";
 const api = new GuidedLearningApiClient();
 
 type Props = { onBack: () => void };
-type GuidedByokProvider = Exclude<GuidedProviderConfig, { provider: "MOCK" }>["provider"];
+type GuidedByokProvider = Exclude<
+  GuidedProviderConfig,
+  { provider: "MOCK" }
+>["provider"];
 type PendingAction =
   | GuidedLearningCommandName
   | "PROJECT"
@@ -49,7 +53,10 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
   const [model, setModel] = useState("gpt-4o-mini");
   const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
   const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
-  const [pdfPage, setPdfPage] = useState<number | null>(null);
+  const [pdfNavigation, setPdfNavigation] = useState<{
+    page: number;
+    reloadToken: number;
+  } | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(() =>
     readSessionId(),
   );
@@ -82,7 +89,7 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
         setProject({ project_id: value.project_id, name: "已恢复项目" });
         setDocumentVersionId(value.document_version_id);
         setLearningGoal(value.learning_goal);
-        setPdfPage(null);
+        setPdfNavigation(null);
         setPollError(null);
       })
       .catch((reason: unknown) => {
@@ -235,9 +242,17 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
         project_id: project.project_id,
         document_version_id: documentVersionId,
         learning_goal: learningGoal.trim(),
-        provider_config: providerMode === "MOCK"
-          ? { provider: "MOCK", fixture_id: "guided-learning-v1" }
-          : { provider, base_url: baseUrl, model, request_timeout_ms: 30000, max_input_characters: 200000, max_output_tokens: 2000 },
+        provider_config:
+          providerMode === "MOCK"
+            ? { provider: "MOCK", fixture_id: "guided-learning-v1" }
+            : {
+                provider,
+                base_url: baseUrl,
+                model,
+                request_timeout_ms: 30000,
+                max_input_characters: 200000,
+                max_output_tokens: 2000,
+              },
       });
       setSession(result.session);
       setSessionId(result.session.session_id);
@@ -250,11 +265,23 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
   };
 
   const testConnection = async () => {
-    if (providerMode === "MOCK") return setConnectionStatus("Mock 无需连接测试。");
+    if (providerMode === "MOCK")
+      return setConnectionStatus("Mock 无需连接测试。");
     setConnectionStatus("正在使用 Worker 环境 secret 测试连接……");
     try {
-      const result = await api.testEnvironmentConnection({ provider, base_url: baseUrl, model, request_timeout_ms: 30000, max_input_characters: 200000, max_output_tokens: 2000 });
-      setConnectionStatus((result as { output?: { success?: boolean } }).output?.success ? "连接成功（未传输浏览器 key）。" : "连接失败，请检查服务端环境 secret。");
+      const result = await api.testEnvironmentConnection({
+        provider,
+        base_url: baseUrl,
+        model,
+        request_timeout_ms: 30000,
+        max_input_characters: 200000,
+        max_output_tokens: 2000,
+      });
+      setConnectionStatus(
+        (result as { output?: { success?: boolean } }).output?.success
+          ? "连接成功（未传输浏览器 key）。"
+          : "连接失败，请检查服务端环境 secret。",
+      );
     } catch (reason) {
       setConnectionStatus(toUserMessage(reason));
     }
@@ -369,6 +396,12 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
 
   const documentReady = documentJob?.status === "SUCCEEDED" || Boolean(session);
   const busy = pendingAction !== null;
+  const navigateToEvidencePage = (page: number) => {
+    setPdfNavigation((current) => ({
+      page,
+      reloadToken: (current?.reloadToken ?? 0) + 1,
+    }));
+  };
 
   return (
     <section
@@ -438,8 +471,9 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
           setAnswerDraft={setAnswerDraft}
           pdfPreviewUrl={pdfPreviewUrl}
           pdfContentUrl={api.documentContentUrl(session.document_version_id)}
-          pdfPage={pdfPage}
-          onEvidencePage={setPdfPage}
+          pdfPage={pdfNavigation?.page ?? null}
+          pdfReloadToken={pdfNavigation?.reloadToken ?? 0}
+          onEvidencePage={navigateToEvidencePage}
           pendingAction={pendingAction}
           selectDirection={selectDirection}
           startStage={startStage}
@@ -539,19 +573,63 @@ function PreparationPanel(props: {
       <form onSubmit={props.createSession} className="guided-learning-form">
         <label>
           生成模式
-          <select value={props.providerMode} onChange={(event) => props.setProviderMode(event.target.value as "MOCK" | "BYOK")}>
+          <select
+            value={props.providerMode}
+            onChange={(event) =>
+              props.setProviderMode(event.target.value as "MOCK" | "BYOK")
+            }
+          >
             <option value="MOCK">Mock（确定性）</option>
             <option value="BYOK">BYOK（服务端环境 secret）</option>
           </select>
         </label>
         {props.providerMode === "BYOK" && (
           <>
-            <label>Provider<select value={props.provider} onChange={(event) => props.setProvider(event.target.value as GuidedByokProvider)}><option value="OPENAI">OpenAI</option><option value="GEMINI">Gemini</option><option value="GROQ">Groq</option><option value="OPENROUTER">OpenRouter</option><option value="CUSTOM_OPENAI_COMPATIBLE">Custom OpenAI Compatible</option></select></label>
-            <label>Model<input value={props.model} onChange={(event) => props.setModel(event.target.value)} /></label>
-            <label>HTTPS Endpoint<input value={props.baseUrl} onChange={(event) => props.setBaseUrl(event.target.value)} /></label>
-            <button type="button" onClick={props.testConnection} disabled={props.busy}>测试服务端环境连接</button>
-            {props.connectionStatus && <p className="guided-learning-meta">{props.connectionStatus}</p>}
-            <p className="guided-learning-meta">API key 不在浏览器中显示、输入或发送；API 与 Worker 使用 `WORKFLOW_BYOK_API_KEY`。</p>
+            <label>
+              Provider
+              <select
+                value={props.provider}
+                onChange={(event) =>
+                  props.setProvider(event.target.value as GuidedByokProvider)
+                }
+              >
+                <option value="OPENAI">OpenAI</option>
+                <option value="GEMINI">Gemini</option>
+                <option value="GROQ">Groq</option>
+                <option value="OPENROUTER">OpenRouter</option>
+                <option value="CUSTOM_OPENAI_COMPATIBLE">
+                  Custom OpenAI Compatible
+                </option>
+              </select>
+            </label>
+            <label>
+              Model
+              <input
+                value={props.model}
+                onChange={(event) => props.setModel(event.target.value)}
+              />
+            </label>
+            <label>
+              HTTPS Endpoint
+              <input
+                value={props.baseUrl}
+                onChange={(event) => props.setBaseUrl(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={props.testConnection}
+              disabled={props.busy}
+            >
+              测试服务端环境连接
+            </button>
+            {props.connectionStatus && (
+              <p className="guided-learning-meta">{props.connectionStatus}</p>
+            )}
+            <p className="guided-learning-meta">
+              API key 不在浏览器中显示、输入或发送；API 与 Worker 使用
+              `WORKFLOW_BYOK_API_KEY`。
+            </p>
           </>
         )}
         <label>
@@ -583,6 +661,7 @@ function SessionPanel(props: {
   pdfPreviewUrl: string | null;
   pdfContentUrl: string;
   pdfPage: number | null;
+  pdfReloadToken: number;
   onEvidencePage: (page: number) => void;
   pendingAction: PendingAction;
   selectDirection: (directionId: string) => void;
@@ -605,18 +684,14 @@ function SessionPanel(props: {
         <div className="guided-learning-card">
           <h3>论文原文</h3>
           {props.pdfPreviewUrl || props.pdfContentUrl ? (
-            <iframe
-              className="guided-learning-pdf"
-              title="Imported PDF preview"
-              src={pdfSourceWithPage(
-                props.pdfPreviewUrl ?? props.pdfContentUrl,
-                props.pdfPage,
-              )}
+            <PdfPreview
+              contentUrl={props.pdfContentUrl}
+              previewUrl={props.pdfPreviewUrl}
+              page={props.pdfPage}
+              reloadToken={props.pdfReloadToken}
             />
           ) : (
-            <p className="guided-learning-meta">
-              正在读取服务端 PDF 内容。
-            </p>
+            <p className="guided-learning-meta">正在读取服务端 PDF 内容。</p>
           )}
         </div>
         {session.route && (
@@ -810,6 +885,84 @@ function SessionPanel(props: {
   );
 }
 
+type PdfLoadState = "loading" | "loaded" | "failed";
+const PDF_LOAD_TIMEOUT_MS = 10000;
+
+function PdfPreview(props: {
+  previewUrl: string | null;
+  contentUrl: string;
+  page: number | null;
+  reloadToken: number;
+}) {
+  const source = props.previewUrl ?? props.contentUrl;
+  const sourceWithPage = pdfSourceWithPage(source, props.page);
+  const navigationKey = pdfFrameKey(source, props.page, props.reloadToken);
+  const [loadState, setLoadState] = useState<PdfLoadState>("loading");
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finishLoad = (state: PdfLoadState) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    setLoadState(state);
+  };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: navigation changes must restart the bounded load timer.
+  useEffect(() => {
+    setLoadState("loading");
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(
+      () => setLoadState("failed"),
+      PDF_LOAD_TIMEOUT_MS,
+    );
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
+    };
+  }, [navigationKey]);
+
+  return (
+    <div>
+      {props.page && (
+        <p className="guided-learning-status" data-testid="pdf-page-target">
+          当前定位目标：第 {props.page} 页
+        </p>
+      )}
+      {loadState === "loading" && (
+        <p className="guided-learning-meta" role="status">
+          正在加载 PDF{props.page ? ` 并定位第 ${props.page} 页` : ""}……
+        </p>
+      )}
+      {loadState === "failed" && (
+        <p
+          className="guided-learning-status guided-learning-error"
+          role="alert"
+        >
+          PDF
+          查看器未确认加载完成。浏览器内置查看器可能不支持自动定位，请使用下方新标签页入口核对原文。
+        </p>
+      )}
+      <iframe
+        key={navigationKey}
+        className="guided-learning-pdf"
+        title="Imported PDF preview"
+        src={sourceWithPage}
+        data-navigation-key={navigationKey}
+        onLoad={() => finishLoad("loaded")}
+        onError={() => finishLoad("failed")}
+      />
+      {props.page && (
+        <div className="guided-learning-pdf-toolbar">
+          <a href={sourceWithPage} target="_blank" rel="noreferrer">
+            在新标签页打开第 {props.page} 页
+          </a>
+          <span className="guided-learning-meta">
+            若内置查看器未自动跳转，请在新标签页中手动核对第 {props.page} 页。
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FeedbackPanel(
   props: Parameters<typeof SessionPanel>[0] & { question: FeedbackQuestion },
 ) {
@@ -843,6 +996,10 @@ function FeedbackPanel(
       </ul>
       <div className="guided-learning-evidence">
         <h3>Evidence 原文证据</h3>
+        <p className="guided-learning-meta">
+          VERIFIED
+          仅表示引用位置与原文字符串已逐字核对，不代表该主张的解释、推理或科研结论已被系统确认。
+        </p>
         {question.evidence.map((evidence) => (
           <article key={evidence.evidence_span_id}>
             <strong>第 {evidence.page_number} 页</strong>
@@ -864,7 +1021,11 @@ function FeedbackPanel(
                 ? "已验证"
                 : "不可确认"}
             </p>
-            <button type="button" onClick={() => props.onEvidencePage(evidence.page_number)}>
+            <button
+              type="button"
+              aria-pressed={props.pdfPage === evidence.page_number}
+              onClick={() => props.onEvidencePage(evidence.page_number)}
+            >
               查看第 {evidence.page_number} 页
             </button>
           </article>

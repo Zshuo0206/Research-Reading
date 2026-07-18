@@ -53,7 +53,12 @@ export type CreateSessionResult = {
 export type GuidedProviderConfig =
   | { provider: "MOCK"; fixture_id: string }
   | {
-      provider: "OPENAI" | "GEMINI" | "GROQ" | "OPENROUTER" | "CUSTOM_OPENAI_COMPATIBLE";
+      provider:
+        | "OPENAI"
+        | "GEMINI"
+        | "GROQ"
+        | "OPENROUTER"
+        | "CUSTOM_OPENAI_COMPATIBLE";
       base_url: string;
       model: string;
       request_timeout_ms: number;
@@ -125,7 +130,9 @@ export class GuidedLearningApiClient {
     );
   }
 
-  testEnvironmentConnection(provider_config: Exclude<GuidedProviderConfig, { provider: "MOCK" }>) {
+  testEnvironmentConnection(
+    provider_config: Exclude<GuidedProviderConfig, { provider: "MOCK" }>,
+  ) {
     return this.request<unknown>("/api/v1/byok/environment-connection-test", {
       method: "POST",
       body: JSON.stringify({ provider_config }),
@@ -214,6 +221,14 @@ export class GuidedLearningApiClient {
 export function pdfSourceWithPage(source: string, page: number | null): string {
   if (page === null) return source;
   return `${source.split("#", 1)[0]}#page=${page}`;
+}
+
+export function pdfFrameKey(
+  source: string,
+  page: number | null,
+  reloadToken: number,
+): string {
+  return `${pdfSourceWithPage(source, page)}|reload=${reloadToken}`;
 }
 
 function requestKey(prefix: string): string {

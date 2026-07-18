@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   GuidedLearningApiClient,
   GuidedLearningApiError,
+  pdfFrameKey,
   pdfSourceWithPage,
 } from "../../../apps/web/src/features/guided-learning/api.js";
 import {
@@ -19,29 +20,41 @@ const envelope = <T>(data: T) =>
     { status: 200, headers: { "content-type": "application/json" } },
   );
 
-  it("returns a base PDF content URL without a page fragment", () => {
-    const client = new GuidedLearningApiClient("http://127.0.0.1:4310");
+it("returns a base PDF content URL without a page fragment", () => {
+  const client = new GuidedLearningApiClient("http://127.0.0.1:4310");
 
-    expect(client.documentContentUrl("document_example")).toBe(
-      "http://127.0.0.1:4310/api/v1/document-versions/document_example/content",
-    );
-  });
+  expect(client.documentContentUrl("document_example")).toBe(
+    "http://127.0.0.1:4310/api/v1/document-versions/document_example/content",
+  );
+});
 
-  it("adds exactly one page fragment to the active PDF source", () => {
-    const serverSource =
-      "http://127.0.0.1:4310/api/v1/document-versions/document_example/content";
+it("adds exactly one page fragment to the active PDF source", () => {
+  const serverSource =
+    "http://127.0.0.1:4310/api/v1/document-versions/document_example/content";
 
-    expect(pdfSourceWithPage(serverSource, 5)).toBe(`${serverSource}#page=5`);
-    expect(pdfSourceWithPage(`${serverSource}#page=5`, 6)).toBe(
-      `${serverSource}#page=6`,
-    );
-    expect(pdfSourceWithPage(`${serverSource}#page=5`, 5)).toBe(
-      `${serverSource}#page=5`,
-    );
-    expect(pdfSourceWithPage("blob:http://localhost/preview#old", 5)).toBe(
-      "blob:http://localhost/preview#page=5",
-    );
-  });
+  expect(pdfSourceWithPage(serverSource, 5)).toBe(`${serverSource}#page=5`);
+  expect(pdfSourceWithPage(`${serverSource}#page=5`, 6)).toBe(
+    `${serverSource}#page=6`,
+  );
+  expect(pdfSourceWithPage(`${serverSource}#page=5`, 5)).toBe(
+    `${serverSource}#page=5`,
+  );
+  expect(pdfSourceWithPage("blob:http://localhost/preview#old", 5)).toBe(
+    "blob:http://localhost/preview#page=5",
+  );
+});
+
+it("changes the iframe key for a new page and a repeated same-page navigation", () => {
+  const source =
+    "http://127.0.0.1:4310/api/v1/document-versions/document_example/content#old";
+
+  expect(pdfFrameKey(source, 5, 1)).toBe(
+    "http://127.0.0.1:4310/api/v1/document-versions/document_example/content#page=5|reload=1",
+  );
+  expect(pdfFrameKey(source, 6, 2)).not.toBe(pdfFrameKey(source, 5, 1));
+  expect(pdfFrameKey(source, 5, 2)).not.toBe(pdfFrameKey(source, 5, 1));
+  expect(pdfFrameKey(source, 5, 2).match(/#page=/g)).toHaveLength(1);
+});
 
 describe("Guided Learning Web API client", () => {
   it("uses api.v1 envelopes for create/get/command and preserves request headers", async () => {
