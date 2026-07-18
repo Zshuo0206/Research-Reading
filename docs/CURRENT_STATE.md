@@ -1,7 +1,17 @@
 # Current State
 
-最后更新：2026-07-17（Asia/Shanghai）
-状态：`WAVE_1_RELEASE_GATE_EVIDENCE_GROUNDING_BLOCKED`
+最后更新：2026-07-19（Asia/Shanghai）
+状态：`V1_STABILIZATION_EXTERNAL_REVIEW_PENDING`
+
+## T-W1-019 稳定化分支
+
+`fix/v1-stabilization` 基于已核验的 `5473ca01434093a1ba6dba49b7e9bb249b063bba`，完成 PDF Evidence 导航可观察性、Web E2E 状态推进真实性、Mock Evidence 语义、API 错误 envelope、BYOK 默认边界、Worker 韧性、真实本地 HTTP smoke 和 Windows 运维脚本实现。没有公共 Schema、migration、状态机或 Evidence exact-match gate 变更。
+
+本分支事实性验证包括：完整 integration 96/96、`npm test` 29/29、runtime integration 26/26、Playwright 3/3、真实 `test:v1-smoke` 1/1，以及 lint、typecheck、contract、build、platform smoke、security、online `npm audit --omit=dev` 和 `git diff --check` 通过。start/check/stop 已实际演练；首次 Web cwd 错误触发启动失败清理，修复后 API/Worker/Web ownership 与健康检查通过并由 stop 脚本安全停止。
+
+`npm run format` 仍被基线已有的 6 个未格式化文件阻断，其中包含冻结的 contracts/storage；T-W1-019 修改文件已单独通过 Biome。本任务不借格式化扩大公共契约写入范围。
+
+真实 Chrome/Edge 内置 PDF viewer 跳页与真实外部模型 BYOK 没有在自动化中执行，继续列为人工复验项。以上不构成最终 review、Release Gate、tag 或下一批授权；按 Level 3 交接给独立 reviewer。
 
 产品需求基线：V1.0 产品定义已归档至
 `docs/product/versions/科研文献引导式学习平台_V1.0产品定义.md`，开发需求见
