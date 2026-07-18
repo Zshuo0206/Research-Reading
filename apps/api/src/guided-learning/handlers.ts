@@ -1,6 +1,6 @@
-import { GuidedLearningRuntimeError } from "./runtime.js";
-import type { GuidedLearningRuntime } from "./runtime.js";
 import type { GuidedLearningProviderConfig } from "../../../../packages/storage/dist/index.js";
+import type { GuidedLearningRuntime } from "./runtime.js";
+import { GuidedLearningRuntimeError } from "./runtime.js";
 
 export class GuidedLearningApiHandlers {
   constructor(private readonly runtime: GuidedLearningRuntime) {}
@@ -62,15 +62,29 @@ export class GuidedLearningApiHandlers {
           request_id: requestId,
           error: {
             code,
-            message:
-              error instanceof Error
-                ? error.message.slice(0, 500)
-                : "Guided learning request failed",
+            message: safeGuidedLearningMessage(code),
             request_id: requestId,
             details: [],
           },
         },
       };
     }
+  }
+}
+
+function safeGuidedLearningMessage(code: string): string {
+  switch (code) {
+    case "NOT_FOUND":
+      return "The guided learning session was not found.";
+    case "REVISION_CONFLICT":
+      return "The session changed; refresh it before retrying.";
+    case "IDEMPOTENCY_CONFLICT":
+      return "The idempotency key was already used for different input.";
+    case "INVALID_STATE_TRANSITION":
+      return "This action is not available in the current session state.";
+    case "VALIDATION_FAILED":
+      return "The guided learning request is invalid.";
+    default:
+      return "The server could not complete the guided learning request.";
   }
 }

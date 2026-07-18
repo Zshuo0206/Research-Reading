@@ -57,22 +57,35 @@ export class DocumentIngestService {
     }
   }
 
-  async readPdf(documentVersionId: string): Promise<Buffer | undefined> {
+  async readPdf(documentVersionId: string): Promise<Buffer> {
     const version = this.storage.getDocumentVersion(documentVersionId);
-    if (!version) return undefined;
+    if (!version)
+      throw new DocumentIngestError(
+        "NOT_FOUND",
+        "Document version content was not found",
+      );
     const sha = String(version.source_sha256);
-    if (!/^[a-f0-9]{64}$/.test(sha)) return undefined;
+    if (!/^[a-f0-9]{64}$/.test(sha))
+      throw new DocumentIngestError(
+        "STORAGE_UNAVAILABLE",
+        "Document content metadata is unavailable",
+      );
     try {
-      return await readFile(join(this.contentRoot, sha.slice(0, 2), `${sha}.pdf`));
+      return await readFile(
+        join(this.contentRoot, sha.slice(0, 2), `${sha}.pdf`),
+      );
     } catch {
-      return undefined;
+      throw new DocumentIngestError(
+        "STORAGE_UNAVAILABLE",
+        "Document content storage is unavailable",
+      );
     }
   }
 }
 
 export class DocumentIngestError extends Error {
   constructor(
-    readonly code: "NOT_FOUND",
+    readonly code: "NOT_FOUND" | "STORAGE_UNAVAILABLE",
     message: string,
   ) {
     super(message);

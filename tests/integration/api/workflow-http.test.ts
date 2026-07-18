@@ -7,11 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createApiServer } from "../../../apps/api/src/server.js";
 import { createWorkerRuntime } from "../../../apps/worker/src/runtime.js";
 import { createDocumentImportJobHandler } from "../../../apps/worker/src/workflow/document-import.js";
+import { extractTextPdf, sha256 } from "../../../packages/pdf/src/index.js";
 import {
   openDatabase,
   StorageRepository,
 } from "../../../packages/storage/src/index.js";
-import { extractTextPdf, sha256 } from "../../../packages/pdf/src/index.js";
 
 const fixture = fileURLToPath(
   new URL("../../fixtures/pdf/synthetic-text.pdf", import.meta.url),
@@ -515,11 +515,34 @@ describe("Wave 1 workflow HTTP API", () => {
       url: "/api/v1/byok/session-key",
       payload: { api_key: sessionKey },
     });
+    expect(registration.statusCode).toBe(404);
+    expect(error(registration).code).toBe("FEATURE_DISABLED");
     expect(registration.body).not.toContain(sessionKey);
     expect(
       readFileSync(setup.databasePath).includes(Buffer.from(sessionKey)),
     ).toBe(false);
     await app.close();
+
+    const optInApp = createApiServer({
+      databasePath: setup.databasePath,
+      contentRoot: setup.contentRoot,
+      enableBrowserSessionKey: true,
+    });
+    const optedIn = await optInApp.inject({
+      method: "POST",
+      url: "/api/v1/byok/session-key",
+      payload: { api_key: sessionKey },
+    });
+    expect(optedIn.statusCode).toBe(200);
+    expect(optedIn.body).not.toContain(sessionKey);
+    expect(optedIn.json()).toMatchObject({
+      schema_version: "api.v1",
+      data: { secret_handle: expect.stringMatching(/^secret_session_/) },
+    });
+    expect(
+      readFileSync(setup.databasePath).includes(Buffer.from(sessionKey)),
+    ).toBe(false);
+    await optInApp.close();
   });
 });
 

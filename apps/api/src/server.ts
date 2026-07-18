@@ -1,33 +1,76 @@
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyReply } from "fastify";
+import { DocumentIngestError } from "./document-ingest/service.js";
 import { isApiHostAllowed } from "./host-policy.js";
 import { createApiRuntime } from "./runtime.js";
 import { PDF_UPLOAD_MAX_BYTES, PDF_UPLOAD_MAX_MIB } from "./upload-limits.js";
 
 export function createApiServer(
-  options: { databasePath?: string; contentRoot?: string } = {},
+  options: {
+    databasePath?: string;
+    contentRoot?: string;
+    enableBrowserSessionKey?: boolean;
+  } = {},
 ) {
   const app = Fastify({ logger: false });
   const runtime = createApiRuntime(options.databasePath, options.contentRoot);
+  const browserSessionKeyEnabled =
+    options.enableBrowserSessionKey ??
+    process.env.ENABLE_BROWSER_SESSION_KEY === "1";
   app.setErrorHandler((error, request, reply) => {
-    if (
-      isPdfUploadRequest(request.method, request.url) &&
-      isBodyTooLargeError(error)
-    ) {
+    if (isBodyTooLargeError(error)) {
       const id = requestId(request.id);
-      return reply.code(413).send({
-        schema_version: "api.v1",
-        request_id: id,
-        error: {
-          code: "PDF_TOO_LARGE",
-          message: `PDF 文件不能超过 ${PDF_UPLOAD_MAX_MIB} MiB。`,
-          request_id: id,
-          details: [],
-        },
-      });
+      if (!isPdfUploadRequest(request.method, request.url))
+        return sendApiError(
+          reply,
+          id,
+          413,
+          "PAYLOAD_TOO_LARGE",
+          "The request body exceeds the allowed size.",
+        );
+      return sendApiError(
+        reply,
+        id,
+        413,
+        "PDF_TOO_LARGE",
+        `PDF 文件不能超过 ${PDF_UPLOAD_MAX_MIB} MiB。`,
+      );
     }
-    return reply.send(error);
+    const clientStatus = clientErrorStatus(error);
+    if (clientStatus)
+      return sendApiError(
+        reply,
+        requestId(request.id),
+        clientStatus,
+        clientStatus === 415 ? "UNSUPPORTED_MEDIA_TYPE" : "BAD_REQUEST",
+        clientStatus === 415
+          ? "The request content type is not supported."
+          : "The request could not be parsed.",
+      );
+    console.error(
+      JSON.stringify({
+        event: "api_request_failed",
+        request_id: requestId(request.id),
+        error_code: errorCodeForLog(error),
+      }),
+    );
+    return sendApiError(
+      reply,
+      requestId(request.id),
+      500,
+      "INTERNAL_ERROR",
+      "The server could not complete the request.",
+    );
   });
+  app.setNotFoundHandler((request, reply) =>
+    sendApiError(
+      reply,
+      requestId(request.id),
+      404,
+      "ROUTE_NOT_FOUND",
+      "The requested API route was not found.",
+    ),
+  );
   app.addHook("onRequest", async (request, reply) => {
     const origin = request.headers.origin;
     if (
@@ -91,11 +134,11 @@ export function createApiServer(
           throw validationError(
             "project_id, document_version_id and learning_goal are required",
           );
-          return runtime.guidedLearningHandlers.create({
-            project_id: body.project_id,
-            document_version_id: body.document_version_id,
-            learning_goal: body.learning_goal,
-            provider_config: parseProvider(body.provider_config),
+        return runtime.guidedLearningHandlers.create({
+          project_id: body.project_id,
+          document_version_id: body.document_version_id,
+          learning_goal: body.learning_goal,
+          provider_config: parseProvider(body.provider_config),
         });
       })
       .then((result) => reply.code(result.statusCode).send(result.body));
@@ -117,24 +160,51 @@ export function createApiServer(
   app.get(
     "/api/v1/document-versions/:documentVersionId/content",
     async (request, reply) => {
-      const { documentVersionId } = request.params as { documentVersionId?: string };
+      const { documentVersionId } = request.params as {
+        documentVersionId?: string;
+      };
       try {
         requireId(documentVersionId, "docv_");
-        const query = request.query as { page?: string };
-        if (query.page !== undefined) {
-          const page = Number(query.page);
-          const version = runtime.storage.getDocumentVersion(documentVersionId);
-          if (!Number.isInteger(page) || page < 1 || !version || page > Number(version.page_count))
-            return reply.code(400).send({ error: "The requested PDF page is invalid." });
-        }
+      } catch {
+        return sendApiError(
+          reply,
+          requestId(request.id),
+          400,
+          "INVALID_RESOURCE_ID",
+          "The document version id is invalid.",
+        );
+      }
+      const query = request.query as Record<string, unknown>;
+      if (Object.keys(query).length > 0)
+        return sendApiError(
+          reply,
+          requestId(request.id),
+          400,
+          "PDF_PAGE_QUERY_UNSUPPORTED",
+          "PDF page navigation must use a URL fragment; this endpoint serves the complete PDF.",
+        );
+      try {
         const content = await runtime.documentIngest.readPdf(documentVersionId);
-        if (!content) return reply.code(404).send({ error: "Document version content not found." });
         return reply
           .type("application/pdf")
           .header("content-disposition", "inline")
           .send(content);
-      } catch {
-        return reply.code(400).send({ error: "Document version id is invalid." });
+      } catch (error) {
+        if (error instanceof DocumentIngestError && error.code === "NOT_FOUND")
+          return sendApiError(
+            reply,
+            requestId(request.id),
+            404,
+            "DOCUMENT_CONTENT_NOT_FOUND",
+            "Document version content was not found.",
+          );
+        return sendApiError(
+          reply,
+          requestId(request.id),
+          500,
+          "STORAGE_UNAVAILABLE",
+          "Document content storage is unavailable.",
+        );
       }
     },
   );
@@ -182,22 +252,57 @@ export function createApiServer(
   );
 
   app.post("/api/v1/byok/session-key", async (request, reply) => {
+    const id = requestId(request.id);
+    if (!browserSessionKeyEnabled)
+      return sendApiError(
+        reply,
+        id,
+        404,
+        "FEATURE_DISABLED",
+        "Browser session keys are disabled; use the Worker environment secret.",
+      );
     const body = request.body as { api_key?: unknown } | undefined;
-    if (!body || typeof body.api_key !== "string") {
-      return reply
-        .code(400)
-        .send({ error: "A non-empty api_key is required." });
-    }
+    if (!body || typeof body.api_key !== "string" || body.api_key.length === 0)
+      return sendApiError(
+        reply,
+        id,
+        400,
+        "VALIDATION_ERROR",
+        "A non-empty api_key is required.",
+      );
     try {
-      return runtime.byokConnectionTestApi.registerSessionKey(body.api_key);
+      return reply.send({
+        schema_version: "api.v1",
+        request_id: id,
+        data: runtime.byokConnectionTestApi.registerSessionKey(body.api_key),
+      });
     } catch {
-      return reply.code(400).send({ error: "The API key is invalid." });
+      return sendApiError(
+        reply,
+        id,
+        400,
+        "VALIDATION_ERROR",
+        "The API key is invalid.",
+      );
     }
   });
 
-  app.delete("/api/v1/byok/session-key/:handle", async (request) => {
+  app.delete("/api/v1/byok/session-key/:handle", async (request, reply) => {
+    const id = requestId(request.id);
+    if (!browserSessionKeyEnabled)
+      return sendApiError(
+        reply,
+        id,
+        404,
+        "FEATURE_DISABLED",
+        "Browser session keys are disabled; use the Worker environment secret.",
+      );
     const params = request.params as { handle?: string };
-    return runtime.byokConnectionTestApi.clearSessionKey(params.handle ?? "");
+    return reply.send({
+      schema_version: "api.v1",
+      request_id: id,
+      data: runtime.byokConnectionTestApi.clearSessionKey(params.handle ?? ""),
+    });
   });
 
   app.post("/api/v1/byok/connection-test", async (request, reply) => {
@@ -211,40 +316,57 @@ export function createApiServer(
         data: result.body,
       });
     } catch {
-      return reply
-        .code(400)
-        .send({ error: "The connection-test request is invalid." });
+      return sendApiError(
+        reply,
+        requestId(request.id),
+        400,
+        "VALIDATION_ERROR",
+        "The connection-test request is invalid.",
+      );
     }
   });
 
-  app.post("/api/v1/byok/environment-connection-test", async (request, reply) => {
-    try {
-      const body = request.body as { provider_config?: unknown } | undefined;
-      const provider = parseProvider(body?.provider_config);
-      if (provider.provider === "MOCK")
-        return reply.code(400).send({ error: "A BYOK provider is required." });
-      const result = await runtime.byokConnectionTestApi.testConnection({
-        schema_version: "model-gateway.v1",
-        message_kind: "REQUEST",
-        operation: "CONNECTION_TEST",
-        provider_config: provider,
-        runtime_secret_ref: {
-          kind: "ENVIRONMENT",
-          name: "WORKFLOW_BYOK_API_KEY",
-        },
-        input: { probe: true },
-      } as never);
-      return reply.code(result.status_code).send({
-        schema_version: "api.v1",
-        request_id: requestId(request.id),
-        data: result.body,
-      });
-    } catch {
-      return reply
-        .code(400)
-        .send({ error: "The environment connection-test request is invalid." });
-    }
-  });
+  app.post(
+    "/api/v1/byok/environment-connection-test",
+    async (request, reply) => {
+      try {
+        const body = request.body as { provider_config?: unknown } | undefined;
+        const provider = parseProvider(body?.provider_config);
+        if (provider.provider === "MOCK")
+          return sendApiError(
+            reply,
+            requestId(request.id),
+            400,
+            "VALIDATION_ERROR",
+            "A BYOK provider is required.",
+          );
+        const result = await runtime.byokConnectionTestApi.testConnection({
+          schema_version: "model-gateway.v1",
+          message_kind: "REQUEST",
+          operation: "CONNECTION_TEST",
+          provider_config: provider,
+          runtime_secret_ref: {
+            kind: "ENVIRONMENT",
+            name: "WORKFLOW_BYOK_API_KEY",
+          },
+          input: { probe: true },
+        } as never);
+        return reply.code(result.status_code).send({
+          schema_version: "api.v1",
+          request_id: requestId(request.id),
+          data: result.body,
+        });
+      } catch {
+        return sendApiError(
+          reply,
+          requestId(request.id),
+          400,
+          "VALIDATION_ERROR",
+          "The environment connection-test request is invalid.",
+        );
+      }
+    },
+  );
 
   app.post("/api/v1/projects", async (request, reply) => {
     const body = request.body as { name?: unknown } | undefined;
@@ -518,7 +640,10 @@ function requestId(value: string): string {
 }
 
 function isPdfUploadRequest(method: string, url: string): boolean {
-  return method === "POST" && /^\/api\/v1\/projects\/[^/]+\/documents(?:\?|$)/.test(url);
+  return (
+    method === "POST" &&
+    /^\/api\/v1\/projects\/[^/]+\/documents(?:\?|$)/.test(url)
+  );
 }
 
 function isBodyTooLargeError(error: unknown): boolean {
@@ -528,6 +653,50 @@ function isBodyTooLargeError(error: unknown): boolean {
     "code" in error &&
     error.code === "FST_ERR_CTP_BODY_TOO_LARGE"
   );
+}
+
+function sendApiError(
+  reply: FastifyReply,
+  id: string,
+  statusCode: number,
+  code: string,
+  message: string,
+) {
+  return reply.code(statusCode).send({
+    schema_version: "api.v1",
+    request_id: id,
+    error: {
+      code,
+      message,
+      request_id: id,
+      details: [],
+    },
+  });
+}
+
+function clientErrorStatus(error: unknown): number | undefined {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("statusCode" in error) ||
+    typeof error.statusCode !== "number"
+  )
+    return undefined;
+  const status = error.statusCode;
+  if (status < 400 || status > 499 || status === 413 || status === 404)
+    return undefined;
+  return status === 415 ? 415 : 400;
+}
+
+function errorCodeForLog(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  )
+    return error.code.slice(0, 100);
+  return "UNEXPECTED_ERROR";
 }
 
 function requireId(
@@ -571,7 +740,9 @@ function parseProvider(value: unknown) {
       throw validationError("Model base_url is invalid");
     }
     if (url.protocol !== "https:" || url.search || url.hash)
-      throw validationError("Model base_url must be HTTPS without query or fragment");
+      throw validationError(
+        "Model base_url must be HTTPS without query or fragment",
+      );
     if (
       Number(config.request_timeout_ms) < 1000 ||
       Number(config.request_timeout_ms) > 120000 ||
