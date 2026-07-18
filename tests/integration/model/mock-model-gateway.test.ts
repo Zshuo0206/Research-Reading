@@ -15,11 +15,11 @@ import questionPlanSchema from "../../../packages/contracts/wave1/question-plan.
   type: "json",
 };
 import {
+  type AnswerResponse,
   assertCandidateContextSpanIds,
   ByokModelGatewaySeam,
   MockModelGateway,
   ModelGatewayError,
-  type AnswerResponse,
 } from "../../../packages/model-gateway/src/index.js";
 import {
   answerRequest,
@@ -101,6 +101,67 @@ describe("MockModelGateway", () => {
           claim_type: "INSUFFICIENT_EVIDENCE",
           candidate_context_span_ids: [],
         }),
+      ],
+    });
+    expect(validate(response), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  it("emits a guided PAPER_FACT that is limited to an exact canonical quote", async () => {
+    const response = await gateway.invoke({
+      schema_version: "model-gateway.v1",
+      message_kind: "REQUEST",
+      operation: "GENERATE_GUIDED_FEEDBACK",
+      provider_config: { provider: "MOCK", fixture_id: "guided-learning-v1" },
+      input: {
+        learning_goal: "理解论文方法",
+        document_metadata: {
+          document_version_id: contextSpan.document_version_id,
+          page_count: 1,
+        },
+        context_spans: [contextSpan],
+      },
+    });
+    expect(response.operation).toBe("GENERATE_GUIDED_FEEDBACK");
+    if (response.operation !== "GENERATE_GUIDED_FEEDBACK")
+      throw new Error("narrowing failed");
+    const quote = response.output.claims[0]?.evidence_quote_candidate ?? "";
+    expect(response.output.status).toBe("SUCCESS");
+    expect(quote.length).toBeGreaterThanOrEqual(3);
+    expect(contextSpan.text.includes(quote)).toBe(true);
+    expect(response.output.claims[0]).toMatchObject({
+      claim_type: "PAPER_FACT",
+      context_span_id: contextSpan.context_span_id,
+      text: expect.stringContaining(quote),
+    });
+    expect(validate(response), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  it("returns guided insufficient evidence when no unique eligible quote exists", async () => {
+    const response = await gateway.invoke({
+      schema_version: "model-gateway.v1",
+      message_kind: "REQUEST",
+      operation: "GENERATE_GUIDED_FEEDBACK",
+      provider_config: { provider: "MOCK", fixture_id: "guided-learning-v1" },
+      input: {
+        learning_goal: "理解论文方法",
+        document_metadata: {
+          document_version_id: contextSpan.document_version_id,
+          page_count: 1,
+        },
+        context_spans: [{ ...contextSpan, text: "x" }],
+      },
+    });
+    expect(response.operation).toBe("GENERATE_GUIDED_FEEDBACK");
+    if (response.operation !== "GENERATE_GUIDED_FEEDBACK")
+      throw new Error("narrowing failed");
+    expect(response.output).toMatchObject({
+      status: "INSUFFICIENT_EVIDENCE",
+      claims: [
+        {
+          claim_type: "INSUFFICIENT_EVIDENCE",
+          context_span_id: contextSpan.context_span_id,
+          evidence_quote_candidate: "",
+        },
       ],
     });
     expect(validate(response), JSON.stringify(validate.errors)).toBe(true);

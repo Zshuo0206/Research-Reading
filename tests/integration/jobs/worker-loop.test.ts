@@ -1,11 +1,14 @@
 import { mkdtempSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWorkerRuntime } from "../../../apps/worker/src/runtime.js";
 import { runWorkerLoop } from "../../../apps/worker/src/worker-loop.js";
 import { runWorkerService } from "../../../apps/worker/src/worker-service.js";
-import { openDatabase, StorageRepository } from "../../../packages/storage/src/index.js";
+import {
+  openDatabase,
+  StorageRepository,
+} from "../../../packages/storage/src/index.js";
 
 const migrationDirectory = resolve("apps/api/migrations");
 const temporaryDirectories: string[] = [];
@@ -109,18 +112,82 @@ describe("Worker polling loop", () => {
     expect(settled).toBe(true);
   });
 
-  it("closes the database once on a fatal loop error", async () => {
+  it("isolates transient runOnce failures and applies bounded backoff", async () => {
+    const controller = new AbortController();
+    const waits: number[] = [];
+    const retries: Array<{
+      consecutiveFailures: number;
+      retryDelayMs: number;
+    }> = [];
+    let calls = 0;
+    await runWorkerLoop(
+      fakeRuntime(async () => {
+        calls += 1;
+        if (calls < 3) throw new Error("queue unavailable with private path");
+        controller.abort();
+        return true;
+      }),
+      {
+        signal: controller.signal,
+        errorDelayMs: 100,
+        maxErrorDelayMs: 150,
+        sleep: async (delayMs) => {
+          waits.push(delayMs);
+        },
+        onLoopError: ({ consecutiveFailures, retryDelayMs }) => {
+          retries.push({ consecutiveFailures, retryDelayMs });
+        },
+      },
+    );
+    expect(calls).toBe(3);
+    expect(waits).toEqual([100, 150]);
+    expect(retries).toEqual([
+      { consecutiveFailures: 1, retryDelayMs: 100 },
+      { consecutiveFailures: 2, retryDelayMs: 150 },
+    ]);
+  });
+
+  it("closes the database once and reports stopped on a fatal loop configuration error", async () => {
     let closeCalls = 0;
+    let stoppedCalls = 0;
     await expect(
       runWorkerService(
         {
-          jobRuntime: { runOnce: async () => { throw new Error("queue unavailable"); } },
-          database: { close: () => { closeCalls += 1; } },
+          jobRuntime: { runOnce: async () => false },
+          database: {
+            close: () => {
+              closeCalls += 1;
+            },
+          },
         },
-        { signal: new AbortController().signal },
+        {
+          idleDelayMs: -1,
+          onStopped: () => {
+            stoppedCalls += 1;
+          },
+        },
       ),
-    ).rejects.toThrow("queue unavailable");
+    ).rejects.toThrow("Worker idle delay");
     expect(closeCalls).toBe(1);
+    expect(stoppedCalls).toBe(1);
+  });
+
+  it("does not wait for backoff after an abort requested by the retry observer", async () => {
+    const controller = new AbortController();
+    let calls = 0;
+    await runWorkerLoop(
+      fakeRuntime(async () => {
+        calls += 1;
+        throw new Error("database temporarily locked");
+      }),
+      {
+        signal: controller.signal,
+        errorDelayMs: 10000,
+        maxErrorDelayMs: 10000,
+        onLoopError: () => controller.abort(),
+      },
+    );
+    expect(calls).toBe(1);
   });
 
   it("keeps smoke mode immediate and does not run the loop", async () => {
@@ -129,10 +196,24 @@ describe("Worker polling loop", () => {
     let stoppedCalls = 0;
     await runWorkerService(
       {
-        jobRuntime: { runOnce: async () => { calls += 1; return false; } },
-        database: { close: () => { closeCalls += 1; } },
+        jobRuntime: {
+          runOnce: async () => {
+            calls += 1;
+            return false;
+          },
+        },
+        database: {
+          close: () => {
+            closeCalls += 1;
+          },
+        },
       },
-      { smoke: true, onStopped: () => { stoppedCalls += 1; } },
+      {
+        smoke: true,
+        onStopped: () => {
+          stoppedCalls += 1;
+        },
+      },
     );
     expect(calls).toBe(0);
     expect(closeCalls).toBe(1);
@@ -156,16 +237,22 @@ describe("Worker polling loop", () => {
   });
 
   it("consumes a real SQLite job through the formal Worker loop", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "research-reading-worker-loop-"));
+    const directory = mkdtempSync(
+      join(tmpdir(), "research-reading-worker-loop-"),
+    );
     temporaryDirectories.push(directory);
     const databasePath = join(directory, "worker.sqlite");
     let handled = 0;
-    const worker = createWorkerRuntime("worker-loop-integration", databasePath, {
-      documentImportHandler: async () => {
-        handled += 1;
-        return { imported: true };
+    const worker = createWorkerRuntime(
+      "worker-loop-integration",
+      databasePath,
+      {
+        documentImportHandler: async () => {
+          handled += 1;
+          return { imported: true };
+        },
       },
-    });
+    );
     const repository = new StorageRepository(worker.database);
     repository.createJob({
       jobId: "worker_loop_job",
@@ -185,7 +272,9 @@ describe("Worker polling loop", () => {
     });
     const observerRepository = new StorageRepository(observerDatabase);
     expect(handled).toBe(1);
-    expect(observerRepository.getJob("worker_loop_job")).toMatchObject({ state: "SUCCEEDED" });
+    expect(observerRepository.getJob("worker_loop_job")).toMatchObject({
+      state: "SUCCEEDED",
+    });
     observerDatabase.close();
   });
 });

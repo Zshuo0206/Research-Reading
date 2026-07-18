@@ -3,6 +3,11 @@ import Ajv2020Module, {
   type ValidateFunction,
 } from "ajv/dist/2020.js";
 import addFormatsModule from "ajv-formats";
+import type {
+  ContextSpan,
+  ModelGatewayRequest,
+  ModelGatewayResponse,
+} from "../../contracts/dist/wave1/src/index.js";
 import answerSchema from "../../contracts/wave1/answer.v1.schema.json" with {
   type: "json",
 };
@@ -15,11 +20,6 @@ import modelGatewaySchema from "../../contracts/wave1/model-gateway.v1.schema.js
 import questionPlanSchema from "../../contracts/wave1/question-plan.v1.schema.json" with {
   type: "json",
 };
-import type {
-  ContextSpan,
-  ModelGatewayRequest,
-  ModelGatewayResponse,
-} from "../../contracts/dist/wave1/src/index.js";
 
 export type QuestionPlanRequest = Extract<
   ModelGatewayRequest,
@@ -203,32 +203,69 @@ function guidedResponse(request: ModelGatewayRequest): ModelGatewayResponse {
   const spans = Array.isArray(input.context_spans)
     ? (input.context_spans as Array<Record<string, unknown>>)
     : [];
-  const first = spans[0];
-  const contextId = String(first?.context_span_id ?? "context_missing");
-  const quote = String(first?.text ?? "").slice(0, 80);
+  const evidenceCandidate = selectGuidedEvidenceCandidate(spans);
+  const quote = evidenceCandidate?.quote ?? "";
   const output = (() => {
     switch (request.operation) {
       case "GENERATE_GUIDED_DIRECTIONS":
         return {
           directions: [
-            { title: "理解方法设计", description: "梳理方法框架和关键模块。", selection_basis: "与学习目标相关。" },
-            { title: "理解证据链", description: "理解证据如何支撑研究结论。", selection_basis: "便于回看论文依据。" },
+            {
+              title: "理解方法设计",
+              description: "梳理方法框架和关键模块。",
+              selection_basis: "与学习目标相关。",
+            },
+            {
+              title: "理解证据链",
+              description: "理解证据如何支撑研究结论。",
+              selection_basis: "便于回看论文依据。",
+            },
           ],
         };
       case "GENERATE_GUIDED_QUESTIONS":
-        return { questions: [{ text: "论文采用了什么方法？" }, { text: "关键证据如何支持该方法？" }, { text: "该方法对结论有什么影响？" }] };
+        return {
+          questions: [
+            { text: "论文采用了什么方法？" },
+            { text: "关键证据如何支持该方法？" },
+            { text: "该方法对结论有什么影响？" },
+          ],
+        };
       case "GENERATE_GUIDED_FEEDBACK":
         return {
           status: quote ? "SUCCESS" : "INSUFFICIENT_EVIDENCE",
-          summary: "回答已结合当前问题和论文上下文生成点评。",
+          summary: quote
+            ? "已找到一段可逐字核对的论文原文。"
+            : "当前上下文没有可唯一定位的合格原文片段。",
           omissions: [],
-          reference_answer: quote || "当前上下文不足以确认答案。",
+          reference_answer: quote
+            ? `可核对的论文原文：“${quote}”`
+            : "当前上下文不足以确认答案。",
           claims: quote
-            ? [{ text: `论文上下文指出：${quote}`, claim_type: "PAPER_FACT", context_span_id: contextId, evidence_quote_candidate: quote }]
-            : [{ text: "当前上下文不足以确认答案。", claim_type: "INSUFFICIENT_EVIDENCE", context_span_id: contextId, evidence_quote_candidate: "" }],
+            ? [
+                {
+                  text: `论文原文明确写道：“${quote}”`,
+                  claim_type: "PAPER_FACT",
+                  context_span_id: evidenceCandidate?.contextId,
+                  evidence_quote_candidate: quote,
+                },
+              ]
+            : [
+                {
+                  text: "当前上下文不足以确认答案。",
+                  claim_type: "INSUFFICIENT_EVIDENCE",
+                  context_span_id: String(
+                    spans[0]?.context_span_id ?? "context_missing",
+                  ),
+                  evidence_quote_candidate: "",
+                },
+              ],
         };
       case "GENERATE_GUIDED_STAGE_SUMMARY":
-        return { key_mastery_points: ["能够根据论文原文说明方法流程"], major_weak_points: [], next_stage_hint: "V1.0 暂不开放 ANALYZE 和 TRANSFER 阶段。" };
+        return {
+          key_mastery_points: ["能够根据论文原文说明方法流程"],
+          major_weak_points: [],
+          next_stage_hint: "V1.0 暂不开放 ANALYZE 和 TRANSFER 阶段。",
+        };
       default:
         return {};
     }
@@ -239,6 +276,36 @@ function guidedResponse(request: ModelGatewayRequest): ModelGatewayResponse {
     operation: request.operation as never,
     output,
   } as unknown as ModelGatewayResponse;
+}
+
+function selectGuidedEvidenceCandidate(
+  spans: Array<Record<string, unknown>>,
+): { contextId: string; quote: string } | undefined {
+  for (const span of spans) {
+    if (typeof span.context_span_id !== "string") continue;
+    const text = typeof span.text === "string" ? span.text : "";
+    const quote = Array.from(text).slice(0, 80).join("").trim();
+    if (Array.from(quote).length < 3) continue;
+    if (countExactCodePointMatches(text, quote) !== 1) continue;
+    return { contextId: span.context_span_id, quote };
+  }
+  return undefined;
+}
+
+function countExactCodePointMatches(text: string, quote: string): number {
+  const textPoints = Array.from(text);
+  const quotePoints = Array.from(quote);
+  let matches = 0;
+  for (
+    let index = 0;
+    index <= textPoints.length - quotePoints.length;
+    index += 1
+  )
+    if (
+      quotePoints.every((point, offset) => textPoints[index + offset] === point)
+    )
+      matches += 1;
+  return matches;
 }
 
 export function assertCandidateContextSpanIds(

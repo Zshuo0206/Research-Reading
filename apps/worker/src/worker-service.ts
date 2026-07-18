@@ -1,4 +1,8 @@
-import { runWorkerLoop, type WorkerLoopOptions, type WorkerLoopRuntime } from "./worker-loop.js";
+import {
+  runWorkerLoop,
+  type WorkerLoopOptions,
+  type WorkerLoopRuntime,
+} from "./worker-loop.js";
 
 export interface WorkerServiceRuntime extends WorkerLoopRuntime {
   database: {
@@ -15,7 +19,6 @@ export async function runWorkerService(
   runtime: WorkerServiceRuntime,
   options: WorkerServiceOptions = {},
 ): Promise<void> {
-  let completed = false;
   let closed = false;
   const closeDatabase = () => {
     if (closed) return;
@@ -25,10 +28,8 @@ export async function runWorkerService(
 
   try {
     if (!options.smoke) await runWorkerLoop(runtime, options);
-    completed = true;
   } finally {
     closeDatabase();
+    if (!options.smoke) options.onStopped?.();
   }
-
-  if (completed && !options.smoke) options.onStopped?.();
 }
