@@ -132,8 +132,8 @@ export class GuidedLearningApiClient {
     });
   }
 
-  documentContentUrl(documentVersionId: string, page?: number): string {
-    return `${this.baseUrl}/api/v1/document-versions/${documentVersionId}/content${page ? `#page=${page}` : ""}`;
+  documentContentUrl(documentVersionId: string): string {
+    return `${this.baseUrl}/api/v1/document-versions/${documentVersionId}/content`;
   }
 
   getGuidedLearningSession(sessionId: string) {
@@ -209,6 +209,11 @@ export class GuidedLearningApiClient {
     }
     return body.data;
   }
+}
+
+export function pdfSourceWithPage(source: string, page: number | null): string {
+  if (page === null) return source;
+  return `${source.split("#", 1)[0]}#page=${page}`;
 }
 
 function requestKey(prefix: string): string {

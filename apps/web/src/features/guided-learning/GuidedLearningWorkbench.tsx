@@ -7,6 +7,7 @@ import type {
 import {
   GuidedLearningApiError,
   GuidedLearningApiClient,
+  pdfSourceWithPage,
   type Project,
   type GuidedProviderConfig,
   type WorkflowJob,
@@ -436,7 +437,7 @@ export function GuidedLearningWorkbench({ onBack }: Props) {
           answerDraft={answerDraft}
           setAnswerDraft={setAnswerDraft}
           pdfPreviewUrl={pdfPreviewUrl}
-          pdfContentUrl={api.documentContentUrl(session.document_version_id, pdfPage ?? undefined)}
+          pdfContentUrl={api.documentContentUrl(session.document_version_id)}
           pdfPage={pdfPage}
           onEvidencePage={setPdfPage}
           pendingAction={pendingAction}
@@ -607,7 +608,10 @@ function SessionPanel(props: {
             <iframe
               className="guided-learning-pdf"
               title="Imported PDF preview"
-              src={props.pdfPage ? `${props.pdfContentUrl}#page=${props.pdfPage}` : (props.pdfPreviewUrl ?? props.pdfContentUrl)}
+              src={pdfSourceWithPage(
+                props.pdfPreviewUrl ?? props.pdfContentUrl,
+                props.pdfPage,
+              )}
             />
           ) : (
             <p className="guided-learning-meta">

@@ -132,7 +132,7 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
         {
           evidence_span_id: `evidence_${order}`,
           document_version_id: "docv_web_e2e",
-          page_number: 1,
+          page_number: order + 4,
           page_text_sha256: "a".repeat(64),
           extraction_profile_version: "pdf-text-v1",
           char_start: 0,
@@ -303,8 +303,35 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
     await expect(page.getByTestId("guided-learning-failure")).toBeVisible();
     await page.getByRole("button", { name: "重试生成" }).click();
     await expect(page.getByTestId("guided-feedback-panel")).toBeVisible();
-    await expect(page.getByText("第 1 页", { exact: true })).toBeVisible();
+    const evidencePage = question + 4;
+    await expect(page.getByText(`第 ${evidencePage} 页`, { exact: true })).toBeVisible();
     await expect(page.getByText("Canonical method text.")).toBeVisible();
+    const pdfFrame = page.locator('iframe[title="Imported PDF preview"]');
+    await page.getByRole("button", { name: `查看第 ${evidencePage} 页` }).click();
+    await expect(pdfFrame).toHaveAttribute(
+      "src",
+      new RegExp(`#page=${evidencePage}$`),
+    );
+    await page.getByRole("button", { name: `查看第 ${evidencePage} 页` }).click();
+    await expect(pdfFrame).toHaveAttribute(
+      "src",
+      new RegExp(`#page=${evidencePage}$`),
+    );
+    expect((await pdfFrame.getAttribute("src"))?.match(/#page=/g)).toHaveLength(1);
+    if (question === 1) {
+      await page.reload();
+      await expect(page.getByTestId("guided-feedback-panel")).toBeVisible();
+      await expect(pdfFrame).toHaveAttribute(
+        "src",
+        /\/api\/v1\/document-versions\/docv_web_e2e\/content$/,
+      );
+      await page.getByRole("button", { name: `查看第 ${evidencePage} 页` }).click();
+      await expect(pdfFrame).toHaveAttribute(
+        "src",
+        new RegExp(`#page=${evidencePage}$`),
+      );
+      expect((await pdfFrame.getAttribute("src"))?.match(/#page=/g)).toHaveLength(1);
+    }
     await page.getByRole("button", { name: "确认并进入下一题" }).click();
   }
 
