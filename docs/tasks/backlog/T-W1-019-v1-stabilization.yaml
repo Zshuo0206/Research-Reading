@@ -13,6 +13,7 @@ scope:
   - "统一 API api.v1 错误 envelope，默认禁用浏览器 session-key，保持环境变量 secret 为 V1 默认。"
   - "强化 Worker readiness、循环异常隔离、有界退避、AbortSignal 和 graceful shutdown。"
   - "提供 Windows start/stop/check 脚本并更新本地运行文档。"
+  - "第二轮定向修复：每次运行独立 stop file、固定端口和真实 Worker ready JSON；Guided Learning 非法输入安全映射；reference answer 仅由 resolved claims 重建。"
 out_of_scope:
   - "公共 Schema、数据库 migration、Evidence gate 放宽、PDF.js 重构、OCR、远程部署、多用户、ANALYZE、TRANSFER、外部模型自动测试。"
 dependencies:
@@ -26,6 +27,7 @@ writable_paths:
   - apps/web/src/features/guided-learning/polling.ts
   - apps/web/src/features/guided-learning/guided-learning.css
   - apps/api/src/server.ts
+  - apps/api/src/api-errors.ts
   - apps/api/src/document-ingest/service.ts
   - apps/api/src/workflow/handlers.ts
   - apps/api/src/guided-learning/handlers.ts
@@ -55,6 +57,7 @@ writable_paths:
   - tests/integration/workflow/workflow.test.ts
   - tests/integration/v1/local-smoke.test.ts
   - tests/platform/v1-local-scripts.test.ts
+  - tests/platform/v1-local-managed-smoke.test.ts
   - docs/rfcs/RFC-W1-003-v1-stabilization-boundaries.md
   - docs/rfcs/README.md
   - docs/tasks/backlog/T-W1-019-v1-stabilization.yaml
@@ -87,6 +90,10 @@ acceptance_criteria:
   - "所有主要 API 错误返回稳定 api.v1 envelope，不泄露内部异常；browser session-key 默认关闭。"
   - "Worker 初始化成功后才 ready；runOnce 瞬时失败有结构化日志和有界退避，abort/graceful stop 可靠。"
   - "Windows 本地脚本只管理自身进程，不输出 secret，启动失败可清理。"
+  - "托管 stop 通过本次运行专属 control file 让 Worker 完成当前 Job 后退出，不再领取下一 Job；超时不强杀 Worker，且不声称支持 orphan recovery。"
+  - "start/check/stop 固定使用 API 4310 与 Web 4173；端口冲突在启动进程前失败；ready 必须来自逐行解析的真实 Worker JSON。"
+  - "Guided Learning 非法输入只返回 allowlist 中的 400/404/409 api.v1 错误；未知异常统一为不泄露内部信息的 500。"
+  - "feedback reference answer 不信任模型原始字段，只由 resolved claims 构建；supported、mixed、all-insufficient 均有自动化覆盖。"
 required_tests:
   - npm run lint
   - npm run typecheck
@@ -99,6 +106,7 @@ required_tests:
 manual_acceptance:
   - "Chrome/Edge 真实 PDF viewer 页码定位和同页重载仍由人工复验。"
   - "DeepSeek 真实生成和 Claim/Evidence 语义支持关系仍由人工复验。"
+  - "Windows 实机 start/check/stop 使用固定端口，只有端口空闲时才能执行；不得终止外部占用进程来制造通过。"
 security_considerations:
   - "不得读取、打印、保存或请求真实 API key；自动化仅用 Mock/fake secret。"
   - "所有临时 DB、content root、端口和进程必须隔离，不访问真实 acceptance 路径。"
