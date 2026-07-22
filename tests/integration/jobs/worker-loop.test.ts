@@ -1,9 +1,12 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWorkerRuntime } from "../../../apps/worker/src/runtime.js";
-import { runWorkerLoop } from "../../../apps/worker/src/worker-loop.js";
+import {
+  runWorkerLoop,
+  watchWorkerStopFile,
+} from "../../../apps/worker/src/worker-loop.js";
 import { runWorkerService } from "../../../apps/worker/src/worker-service.js";
 import {
   openDatabase,
@@ -110,6 +113,91 @@ describe("Worker polling loop", () => {
     await loop;
     expect(calls).toBe(1);
     expect(settled).toBe(true);
+  });
+
+  it("keeps the service open until the current job finishes, then closes and stops once", async () => {
+    const controller = new AbortController();
+    let releaseCurrentJob!: () => void;
+    let reportEntered!: () => void;
+    const entered = new Promise<void>((resolveEntered) => {
+      reportEntered = resolveEntered;
+    });
+    const currentJob = new Promise<void>((resolveCurrentJob) => {
+      releaseCurrentJob = resolveCurrentJob;
+    });
+    let calls = 0;
+    let closeCalls = 0;
+    let stoppedCalls = 0;
+    let settled = false;
+    const service = runWorkerService(
+      {
+        jobRuntime: {
+          runOnce: async () => {
+            calls += 1;
+            reportEntered();
+            await currentJob;
+            return true;
+          },
+        },
+        database: {
+          close: () => {
+            closeCalls += 1;
+          },
+        },
+      },
+      {
+        signal: controller.signal,
+        onStopped: () => {
+          stoppedCalls += 1;
+        },
+      },
+    ).then(() => {
+      settled = true;
+    });
+    await entered;
+    controller.abort();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(closeCalls).toBe(0);
+    releaseCurrentJob();
+    await service;
+    expect(calls).toBe(1);
+    expect(closeCalls).toBe(1);
+    expect(stoppedCalls).toBe(1);
+  });
+
+  it("watches only for stop-file existence and disposes after requesting stop", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "worker-stop-file-"));
+    temporaryDirectories.push(directory);
+    const stopFile = join(directory, "worker.stop");
+    const controller = new AbortController();
+    let checks = 0;
+    let reportStopped!: () => void;
+    const stopped = new Promise<void>((resolveStopped) => {
+      reportStopped = resolveStopped;
+    });
+    const dispose = watchWorkerStopFile(
+      stopFile,
+      () => {
+        controller.abort();
+        reportStopped();
+      },
+      {
+        intervalMs: 5,
+        fileExists: (path) => {
+          checks += 1;
+          return existsSync(path);
+        },
+      },
+    );
+    expect(controller.signal.aborted).toBe(false);
+    writeFileSync(stopFile, "content-is-never-read", "utf8");
+    await stopped;
+    expect(controller.signal.aborted).toBe(true);
+    const checksAfterStop = checks;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
+    expect(checks).toBe(checksAfterStop);
+    dispose();
   });
 
   it("isolates transient runOnce failures and applies bounded backoff", async () => {

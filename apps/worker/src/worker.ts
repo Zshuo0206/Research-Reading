@@ -1,4 +1,5 @@
 import { createWorkerRuntime } from "./runtime.js";
+import { watchWorkerStopFile } from "./worker-loop.js";
 import { runWorkerService } from "./worker-service.js";
 
 async function startWorker(): Promise<void> {
@@ -56,6 +57,9 @@ async function startWorker(): Promise<void> {
   };
   process.once("SIGINT", () => requestStop("SIGINT"));
   process.once("SIGTERM", () => requestStop("SIGTERM"));
+  const stopWatching = watchWorkerStopFile(process.env.WORKER_STOP_FILE, () =>
+    requestStop("CONTROL_FILE"),
+  );
 
   try {
     await runWorkerService(runtime, {
@@ -87,6 +91,8 @@ async function startWorker(): Promise<void> {
       }),
     );
     process.exitCode = 1;
+  } finally {
+    stopWatching();
   }
 }
 

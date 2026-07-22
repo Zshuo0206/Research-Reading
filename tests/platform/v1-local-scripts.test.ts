@@ -34,12 +34,21 @@ describe("V1 local PowerShell operations", () => {
     const stop = readFileSync(resolve(scripts[2]), "utf8");
 
     expect(start).toContain("start_time_utc");
+    expect(start).toContain("worker_stop_file");
+    expect(start).toContain("worker_platform_shell_ready");
+    expect(start).toContain("GetActiveTcpListeners");
     expect(start).toContain('WindowStyle = "Hidden"');
     expect(start).toContain("processes.json");
+    expect(start).not.toContain("[int]$ApiPort");
+    expect(start).not.toContain("[int]$WebPort");
     expect(stop).toContain("actualStart");
-    expect(stop).toContain("PID $($record.pid) was reused");
+    expect(stop).toContain("PID $($Record.pid) was reused");
+    expect(stop).toContain("CONTROL_FILE");
+    expect(stop.indexOf('foreach ($role in @("api", "web"))')).toBeGreaterThan(
+      stop.indexOf("Test-ControlFileStoppedEvent"),
+    );
     expect(stop).not.toMatch(
-      /Get-Process\s+node|Stop-Process\s+-Name|taskkill/,
+      /Get-Process\s+node|Stop-Process\s+-Name|taskkill|Stop-Process[^\n]+worker/,
     );
   });
 
@@ -50,6 +59,8 @@ describe("V1 local PowerShell operations", () => {
     expect(combined).not.toContain("WORKFLOW_BYOK_API_KEY");
     expect(combined).not.toContain("MODEL_API_KEY");
     expect(combined).not.toMatch(/Remove-Item[^\n]+(?:content|sqlite)/i);
-    expect(combined).toContain("Runtime database and content were preserved.");
+    expect(combined).toContain(
+      "Runtime database, content and per-run logs were preserved.",
+    );
   });
 });

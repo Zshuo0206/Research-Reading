@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 export interface WorkerLoopRuntime {
   jobRuntime: {
     runOnce(): Promise<boolean>;
@@ -78,4 +80,49 @@ function wait(delayMs: number, signal?: AbortSignal): Promise<void> {
     const timer = setTimeout(finish, delayMs);
     signal?.addEventListener("abort", finish, { once: true });
   });
+}
+
+export interface WorkerStopFileWatcherOptions {
+  intervalMs?: number;
+  fileExists?: (path: string) => boolean;
+}
+
+export function watchWorkerStopFile(
+  stopFilePath: string | undefined,
+  requestStop: () => void,
+  options: WorkerStopFileWatcherOptions = {},
+): () => void {
+  if (!stopFilePath?.trim()) return () => undefined;
+  const intervalMs = options.intervalMs ?? 250;
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0)
+    throw new Error(
+      "Worker stop-file interval must be a positive finite number",
+    );
+
+  const fileExists = options.fileExists ?? existsSync;
+  let active = true;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const dispose = () => {
+    if (!active) return;
+    active = false;
+    if (timer) clearInterval(timer);
+    timer = undefined;
+  };
+  const check = () => {
+    if (!active) return;
+    let requested = false;
+    try {
+      requested = fileExists(stopFilePath);
+    } catch {
+      return;
+    }
+    if (!requested) return;
+    dispose();
+    requestStop();
+  };
+
+  timer = setInterval(check, intervalMs);
+  timer.unref?.();
+  check();
+  return dispose;
 }
