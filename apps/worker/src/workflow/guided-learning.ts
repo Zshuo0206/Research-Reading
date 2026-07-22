@@ -449,12 +449,13 @@ function withModelFeedback(
       "Model feedback output is malformed",
       false,
     );
+  const groundedReferenceAnswer = buildGroundedReferenceAnswer(safeClaims);
   return transition(session, "FEEDBACK_READY", (next) => {
     const question = currentQuestion(next as unknown as GuidedLearningSession);
     question.status = "FEEDBACK_READY";
     question.feedback = { summary: output.summary, omissions };
     question.reference_answer = {
-      text: output.reference_answer,
+      text: groundedReferenceAnswer,
       claims: safeClaims,
     };
     question.evidence = evidence;
@@ -467,6 +468,62 @@ function withModelFeedback(
         "Feedback question pointer changed",
       );
   });
+}
+
+type GroundedReferenceClaim = {
+  text: string;
+  claim_type: string;
+  evidence_refs: string[];
+};
+
+export function buildGroundedReferenceAnswer(
+  claims: readonly GroundedReferenceClaim[],
+): string {
+  const supported = claims.filter(
+    (claim) =>
+      claim.claim_type !== "INSUFFICIENT_EVIDENCE" &&
+      claim.evidence_refs.length > 0,
+  );
+  const insufficient = claims.filter(
+    (claim) =>
+      claim.claim_type === "INSUFFICIENT_EVIDENCE" &&
+      claim.evidence_refs.length === 0,
+  );
+  if (supported.length + insufficient.length !== claims.length)
+    throw new GuidedLearningWorkerError(
+      "VALIDATION_FAILED",
+      "Resolved claims do not satisfy the Evidence reference invariant",
+      false,
+    );
+  if (supported.length === 0)
+    return "当前证据不足，暂不提供可确认的论文参考答案。";
+
+  const sections = [
+    "有原文支持的参考内容：",
+    ...supported.map((claim) => `- ${claim.text}`),
+  ];
+  if (insufficient.length > 0)
+    sections.push(
+      "",
+      "当前证据不足：",
+      ...insufficient.map((claim) => `- ${claim.text}`),
+    );
+  return sections.join("\n");
+}
+
+export function summarizeGroundedClaims(
+  claims: readonly GroundedReferenceClaim[],
+): { supported: number; insufficient: number } {
+  return {
+    supported: claims.filter(
+      (claim) =>
+        claim.claim_type !== "INSUFFICIENT_EVIDENCE" &&
+        claim.evidence_refs.length > 0,
+    ).length,
+    insufficient: claims.filter(
+      (claim) => claim.claim_type === "INSUFFICIENT_EVIDENCE",
+    ).length,
+  };
 }
 
 function withModelSummary(

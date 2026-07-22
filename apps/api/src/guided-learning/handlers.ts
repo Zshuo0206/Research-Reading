@@ -1,6 +1,6 @@
 import type { GuidedLearningProviderConfig } from "../../../../packages/storage/dist/index.js";
+import { classifyApiError } from "../api-errors.js";
 import type { GuidedLearningRuntime } from "./runtime.js";
-import { GuidedLearningRuntimeError } from "./runtime.js";
 
 export class GuidedLearningApiHandlers {
   constructor(private readonly runtime: GuidedLearningRuntime) {}
@@ -41,50 +41,20 @@ export class GuidedLearningApiHandlers {
         },
       };
     } catch (error) {
-      const code =
-        error instanceof GuidedLearningRuntimeError
-          ? error.code
-          : "INTERNAL_ERROR";
-      const statusCode =
-        code === "NOT_FOUND"
-          ? 404
-          : code === "INTERNAL_ERROR"
-            ? 500
-            : code === "REVISION_CONFLICT" ||
-                code === "IDEMPOTENCY_CONFLICT" ||
-                code === "INVALID_STATE_TRANSITION"
-              ? 409
-              : 400;
+      const classification = classifyApiError(error);
       return {
-        statusCode,
+        statusCode: classification.statusCode,
         body: {
           schema_version: "api.v1" as const,
           request_id: requestId,
           error: {
-            code,
-            message: safeGuidedLearningMessage(code),
+            code: classification.code,
+            message: classification.message,
             request_id: requestId,
             details: [],
           },
         },
       };
     }
-  }
-}
-
-function safeGuidedLearningMessage(code: string): string {
-  switch (code) {
-    case "NOT_FOUND":
-      return "The guided learning session was not found.";
-    case "REVISION_CONFLICT":
-      return "The session changed; refresh it before retrying.";
-    case "IDEMPOTENCY_CONFLICT":
-      return "The idempotency key was already used for different input.";
-    case "INVALID_STATE_TRANSITION":
-      return "This action is not available in the current session state.";
-    case "VALIDATION_FAILED":
-      return "The guided learning request is invalid.";
-    default:
-      return "The server could not complete the guided learning request.";
   }
 }

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApiRuntime } from "../../../apps/api/src/runtime.js";
 import { createWorkerRuntime } from "../../../apps/worker/src/runtime.js";
+import { buildGroundedReferenceAnswer } from "../../../apps/worker/src/workflow/guided-learning.js";
 import { describe, expect, it } from "vitest";
 
 const fixture = fileURLToPath(
@@ -17,6 +18,47 @@ async function drain(worker: ReturnType<typeof createWorkerRuntime>) {
 }
 
 describe("Guided Learning Worker generation jobs", () => {
+  it("builds reference text from supported, insufficient and mixed resolved claims", () => {
+    const supported = {
+      text: "论文原文支持的方法主张",
+      claim_type: "PAPER_FACT",
+      evidence_refs: ["evidence_1"],
+    };
+    const insufficient = {
+      text: "尚无原文支持的推断",
+      claim_type: "INSUFFICIENT_EVIDENCE",
+      evidence_refs: [],
+    };
+
+    expect(buildGroundedReferenceAnswer([supported])).toBe(
+      [
+        "有原文支持的参考内容：",
+        "- 论文原文支持的方法主张",
+      ].join("\n"),
+    );
+    expect(buildGroundedReferenceAnswer([insufficient])).toBe(
+      "当前证据不足，暂不提供可确认的论文参考答案。",
+    );
+    expect(buildGroundedReferenceAnswer([supported, insufficient])).toBe(
+      [
+        "有原文支持的参考内容：",
+        "- 论文原文支持的方法主张",
+        "",
+        "当前证据不足：",
+        "- 尚无原文支持的推断",
+      ].join("\n"),
+    );
+    expect(() =>
+      buildGroundedReferenceAnswer([
+        {
+          text: "invalid resolved claim",
+          claim_type: "PAPER_FACT",
+          evidence_refs: [],
+        },
+      ]),
+    ).toThrow("Evidence reference invariant");
+  });
+
   it("registers all four operations and runs a real-PDF Mock flow idempotently", async () => {
     const directory = await mkdtemp(join(tmpdir(), "rr-guided-worker-"));
     const databasePath = join(directory, "guided.sqlite");
@@ -95,6 +137,14 @@ describe("Guided Learning Worker generation jobs", () => {
       const current = feedback.questions?.find((item) => item.order === order);
       const evidence = current && "evidence" in current ? current.evidence[0] : undefined;
       expect(evidence?.verification_status).toBe("VERIFIED");
+      if (current && "reference_answer" in current) {
+        expect(current.reference_answer.text).toContain(
+          "有原文支持的参考内容：",
+        );
+        expect(current.reference_answer.text).toContain(
+          current.reference_answer.claims[0]?.text,
+        );
+      }
       const page = api.storage.getDocumentPages(importJob.payload.documentVersionId)[0];
       expect(page?.canonicalPageText.includes(evidence?.quote ?? "")).toBe(true);
       expect(evidence?.page_text_sha256).toBe(page?.pageTextSha256);

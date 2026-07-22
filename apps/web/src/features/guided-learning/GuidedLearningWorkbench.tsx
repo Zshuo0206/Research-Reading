@@ -967,13 +967,31 @@ function FeedbackPanel(
   props: Parameters<typeof SessionPanel>[0] & { question: FeedbackQuestion },
 ) {
   const { question } = props;
+  const supportedClaims = question.reference_answer.claims.filter(
+    (claim) =>
+      claim.claim_type !== "INSUFFICIENT_EVIDENCE" &&
+      claim.evidence_refs.length > 0,
+  );
+  const insufficientClaims = question.reference_answer.claims.filter(
+    (claim) => claim.claim_type === "INSUFFICIENT_EVIDENCE",
+  );
+  const evidenceById = new Map(
+    question.evidence.map((evidence) => [evidence.evidence_span_id, evidence]),
+  );
   return (
     <div className="guided-learning-card" data-testid="guided-feedback-panel">
       <h2>点评与参考答案</h2>
       <h3>我的回答</h3>
       <p>{question.user_answer}</p>
-      <h3>回答点评</h3>
+      <h3>回答点评（模型生成，不代表原文已验证）</h3>
       <p>{question.feedback.summary}</p>
+      <p
+        className="guided-learning-meta"
+        data-testid="evidence-resolution-status"
+      >
+        原文核验：{supportedClaims.length} 条主张有可核对原文，
+        {insufficientClaims.length} 条主张当前证据不足。
+      </p>
       {question.feedback.omissions.length > 0 && (
         <>
           <h4>可以补充</h4>
@@ -984,16 +1002,47 @@ function FeedbackPanel(
           </ul>
         </>
       )}
-      <h3>参考答案</h3>
-      <p>{question.reference_answer.text}</p>
-      <ul>
-        {question.reference_answer.claims.map((claim) => (
-          <li key={claim.text}>
-            {claim.text}{" "}
-            <span className="guided-learning-meta">[{claim.claim_type}]</span>
-          </li>
-        ))}
-      </ul>
+      <h3>参考答案（仅由已解析主张生成）</h3>
+      <p className="guided-learning-reference-answer">
+        {question.reference_answer.text}
+      </p>
+      <section data-testid="supported-claims">
+        <h4>有原文支持</h4>
+        {supportedClaims.length > 0 ? (
+          <ul>
+            {supportedClaims.map((claim) => {
+              const verifiedReferences = claim.evidence_refs.filter(
+                (evidenceId) =>
+                  evidenceById.get(evidenceId)?.verification_status ===
+                  "VERIFIED",
+              ).length;
+              return (
+                <li key={claim.text}>
+                  {claim.text}{" "}
+                  <span className="guided-learning-meta">
+                    原文引用：{verifiedReferences}/{claim.evidence_refs.length}{" "}
+                    条已验证
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="guided-learning-meta">当前没有可核对原文的主张。</p>
+        )}
+      </section>
+      <section data-testid="insufficient-claims">
+        <h4>当前证据不足</h4>
+        {insufficientClaims.length > 0 ? (
+          <ul>
+            {insufficientClaims.map((claim) => (
+              <li key={claim.text}>{claim.text}（当前证据不足）</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="guided-learning-meta">无。</p>
+        )}
+      </section>
       <div className="guided-learning-evidence">
         <h3>Evidence 原文证据</h3>
         <p className="guided-learning-meta">

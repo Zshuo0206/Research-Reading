@@ -129,9 +129,16 @@ describe("Guided Learning real BYOK-shaped generation", () => {
     await command(api, session.session_id, "SUBMIT_ANSWER", { question_id: question?.question_id, question_order: question?.order, answer: "我的模型驱动回答" });
     await worker.jobRuntime.runOnce();
     session = api.guidedLearningRuntime.getSession(session.session_id);
-    const feedbackQuestion = session.questions?.[0] as unknown as { evidence: Array<{ quote: string }>; reference_answer: { claims: Array<{ evidence_refs: string[] }> } };
+    const feedbackQuestion = session.questions?.[0] as unknown as {
+      evidence: Array<{ quote: string }>;
+      reference_answer: { text: string; claims: Array<{ evidence_refs: string[] }> };
+    };
     expect(feedbackQuestion.evidence[0]?.quote).toBe(text);
     expect(feedbackQuestion.reference_answer.claims[0]?.evidence_refs).toHaveLength(1);
+    expect(feedbackQuestion.reference_answer.text).toContain(
+      "有原文支持的参考内容：",
+    );
+    expect(feedbackQuestion.reference_answer.text).not.toBe(text);
     const firstPointer = { question_id: session.questions?.[0]?.question_id, question_order: 1 };
     await command(api, session.session_id, "CONFIRM_QUESTION", firstPointer);
     await command(api, session.session_id, "ADVANCE_QUESTION", firstPointer);
@@ -205,10 +212,19 @@ describe("Guided Learning real BYOK-shaped generation", () => {
     await command(api, session.session_id, "SUBMIT_ANSWER", { question_id: question?.question_id, question_order: question?.order, answer: "SECRET_USER_ANSWER_MARKER" });
     await worker.jobRuntime.runOnce();
     session = api.guidedLearningRuntime.getSession(session.session_id);
-    const insufficientQuestion = session.questions?.[0] as unknown as { evidence: unknown[]; reference_answer: { claims: Array<{ claim_type: string }> } };
+    const insufficientQuestion = session.questions?.[0] as unknown as {
+      evidence: unknown[];
+      reference_answer: {
+        text: string;
+        claims: Array<{ claim_type: string; evidence_refs: string[] }>;
+      };
+    };
     expect(insufficientQuestion.evidence).toEqual([]);
     expect(insufficientQuestion.reference_answer.claims[0]?.claim_type).toBe("INSUFFICIENT_EVIDENCE");
     expect(insufficientQuestion.reference_answer.claims[1]?.claim_type).toBe("INSUFFICIENT_EVIDENCE");
+    expect(insufficientQuestion.reference_answer.claims.every((claim) => claim.evidence_refs.length === 0)).toBe(true);
+    expect(insufficientQuestion.reference_answer.text).toBe("当前证据不足，暂不提供可确认的论文参考答案。");
+    expect(insufficientQuestion.reference_answer.text).not.toContain("SECRET_REFERENCE_ANSWER_MARKER");
     expect(evidenceEvents.map((event) => [event.claim_index, event.resolution_reason, event.exact_match_count_bucket])).toEqual([
       [0, "QUOTE_NOT_FOUND", "ZERO"],
       [1, "MODEL_INSUFFICIENT_EVIDENCE", "NOT_CHECKED"],
@@ -249,6 +265,36 @@ describe("Guided Learning real BYOK-shaped generation", () => {
     worker.database.close();
     api.database.close();
     await rm(directory, { recursive: true, force: true });
+  });
+
+  it("stores a mixed reference answer from resolved claims without raw model prose", async () => {
+    const result = await runSingleFeedbackScenario(
+      { log: () => undefined },
+      {
+        includeInsufficient: true,
+        referenceAnswer: "RAW_UNSUPPORTED_REFERENCE_TEXT",
+      },
+    );
+    const question = result.questions?.[0] as unknown as {
+      evidence: unknown[];
+      reference_answer: {
+        text: string;
+        claims: Array<{
+          text: string;
+          claim_type: string;
+          evidence_refs: string[];
+        }>;
+      };
+    };
+    expect(question.evidence).toHaveLength(1);
+    expect(question.reference_answer.claims[0]?.evidence_refs).toHaveLength(1);
+    expect(question.reference_answer.claims[1]).toMatchObject({
+      claim_type: "INSUFFICIENT_EVIDENCE",
+      evidence_refs: [],
+    });
+    expect(question.reference_answer.text).toContain("有原文支持的参考内容：");
+    expect(question.reference_answer.text).toContain("当前证据不足：");
+    expect(question.reference_answer.text).not.toContain("RAW_UNSUPPORTED_REFERENCE_TEXT");
   });
 
   it("classifies every Evidence resolution branch without exposing claim or source text", () => {
@@ -431,7 +477,12 @@ function response(operation: string, output: unknown) {
 
 async function runSingleFeedbackScenario(
   logger: GuidedLearningEvidenceResolutionLogger,
-  options: { pageText?: string; quote?: string } = {},
+  options: {
+    pageText?: string;
+    quote?: string;
+    includeInsufficient?: boolean;
+    referenceAnswer?: string;
+  } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), "research-reading-diagnostics-"));
   const databasePath = join(directory, "runtime.sqlite");
@@ -448,7 +499,21 @@ async function runSingleFeedbackScenario(
     if (value.operation === "GENERATE_GUIDED_DIRECTIONS") return response(value.operation, { directions: [{ title: "一", description: "一", selection_basis: "一" }, { title: "二", description: "二", selection_basis: "二" }] });
     if (value.operation === "GENERATE_GUIDED_QUESTIONS") return response(value.operation, { questions: [{ text: "一？" }, { text: "二？" }, { text: "三？" }] });
     const span = value.input?.context_spans?.[0];
-    return response(value.operation, { status: "SUCCESS", summary: "点评", omissions: [], reference_answer: "参考", claims: [{ text: "主张", claim_type: "PAPER_FACT", context_span_id: span?.context_span_id, evidence_quote_candidate: quote }] });
+    return response(value.operation, {
+      status: "SUCCESS",
+      summary: "点评",
+      omissions: [],
+      reference_answer: options.referenceAnswer ?? "参考",
+      claims: [
+        { text: "主张", claim_type: "PAPER_FACT", context_span_id: span?.context_span_id, evidence_quote_candidate: quote },
+        ...(options.includeInsufficient
+          ? [{
+              text: "未支持主张",
+              claim_type: "INSUFFICIENT_EVIDENCE",
+            }]
+          : []),
+      ],
+    });
   } };
   const worker = createWorkerRuntime("diagnostics-worker", databasePath, { guidedLearningGateway: gateway, guidedLearningEvidenceResolutionLogger: logger });
   const created = api.guidedLearningHandlers.create({ project_id: "proj_diagnostics", document_version_id: "docv_diagnostics", learning_goal: "验证诊断", provider_config: provider });

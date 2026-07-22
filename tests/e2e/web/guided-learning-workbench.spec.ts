@@ -120,12 +120,17 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
       user_answer: `第 ${order} 题回答`,
       feedback: { summary: "回答抓住了方法的关键连接。", omissions: [] },
       reference_answer: {
-        text: "论文通过可追溯的文本处理支撑方法解释。",
+        text: "有原文支持的参考内容：\n- 方法由论文原文证据支持。\n\n当前证据不足：\n- 尚未找到原文支持的补充推断。",
         claims: [
           {
             text: "方法由论文原文证据支持。",
             claim_type: "PAPER_FACT",
             evidence_refs: [`evidence_${order}`],
+          },
+          {
+            text: "尚未找到原文支持的补充推断。",
+            claim_type: "INSUFFICIENT_EVIDENCE",
+            evidence_refs: [],
           },
         ],
       },
@@ -348,6 +353,28 @@ test("covers BYOK controls with a Mock Guided Learning UI flow and restores afte
     await expect(page.getByTestId("guided-learning-failure")).toBeVisible();
     await page.getByRole("button", { name: "重试生成" }).click();
     await expect(page.getByTestId("guided-feedback-panel")).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "回答点评（模型生成，不代表原文已验证）",
+      }),
+    ).toBeVisible();
+    await expect(page.getByTestId("evidence-resolution-status")).toHaveText(
+      "原文核验：1 条主张有可核对原文，1 条主张当前证据不足。",
+    );
+    await expect(
+      page.getByTestId("supported-claims").getByText("有原文支持"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("supported-claims").getByText("原文引用：1/1 条已验证"),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByTestId("insufficient-claims")
+        .getByRole("heading", { name: "当前证据不足", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("尚未找到原文支持的补充推断。（当前证据不足）"),
+    ).toBeVisible();
     const evidencePage = question + 4;
     await expect(
       page.getByText(`第 ${evidencePage} 页`, { exact: true }),

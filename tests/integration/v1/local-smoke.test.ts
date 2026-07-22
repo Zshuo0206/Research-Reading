@@ -22,7 +22,7 @@ afterEach(async () => {
 });
 
 describe("V1 local HTTP smoke", () => {
-  it("runs real HTTP + Worker + SQLite + PDF + exact Evidence through stage completion", async () => {
+  it("runs real HTTP + Worker runtime handlers + SQLite + PDF through stage completion", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "research-reading-v1-smoke-"),
     );
