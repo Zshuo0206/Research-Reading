@@ -107,7 +107,7 @@ if (
 ) {
   Write-StateLifecycle -LifecycleStatus "CRASHED_WORKER_REVIEW_REQUIRED"
   Write-Warning "A ready Worker exited without CONTROL_FILE stopped evidence; a RUNNING Job may be orphaned."
-  Write-Output "V1 local status: CRASHED_WORKER_REVIEW_REQUIRED"
+  Write-Output "V1 local status: crashed worker review required"
   exit 1
 }
 
@@ -116,12 +116,12 @@ if (@("STARTING_API", "STARTING_WEB", "STARTING_WORKER") -contains $lifecycleSta
   exit 1
 }
 if ($lifecycleStatus -eq "START_FAILED_STOP_PENDING") {
-  Write-Output "V1 local status: START_FAILED_STOP_PENDING"
+  Write-Output "V1 local status: startup rollback pending"
   exit 1
 }
 if ($lifecycleStatus -eq "CRASHED_WORKER_REVIEW_REQUIRED") {
   Write-Warning "A ready Worker exited without CONTROL_FILE stopped evidence; a RUNNING Job may be orphaned."
-  Write-Output "V1 local status: CRASHED_WORKER_REVIEW_REQUIRED"
+  Write-Output "V1 local status: crashed worker review required"
   exit 1
 }
 if ($lifecycleStatus -ne "READY") {

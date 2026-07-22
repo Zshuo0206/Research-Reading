@@ -132,8 +132,8 @@ describe("V1 local PowerShell operations", () => {
     const check = readFileSync(resolve(scripts[1]), "utf8");
 
     expect(check).toContain("V1 local status: starting");
-    expect(check).toContain("V1 local status: START_FAILED_STOP_PENDING");
-    expect(check).toContain("V1 local status: CRASHED_WORKER_REVIEW_REQUIRED");
+    expect(check).toContain("V1 local status: startup rollback pending");
+    expect(check).toContain("V1 local status: crashed worker review required");
     expect(check).toContain("a RUNNING Job may be orphaned");
     expect(check.indexOf('if ($lifecycleStatus -ne "READY")')).toBeLessThan(
       check.indexOf("api health: ok"),

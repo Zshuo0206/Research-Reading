@@ -441,7 +441,7 @@ try {
   }
 
   if (-not $workerReadyObserved) {
-    Write-Output "worker: pre-ready startup failure contained"
+    Write-Output "worker: failed before ready; API and Web cleaned up safely"
     Stop-OwnedApiAndWeb
     Remove-ActiveManagedState
     throw $startupFailure

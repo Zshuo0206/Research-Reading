@@ -136,7 +136,7 @@ describe("V1 managed local process release gate", () => {
         expect(result.status).not.toBe(0);
         expect(result.stdout).toContain("managed lifecycle: STARTING_WORKER");
         expect(result.stdout).toContain(
-          "worker: pre-ready startup failure contained",
+          "worker: failed before ready; API and Web cleaned up safely",
         );
         expect(result.stdout).not.toContain(
           "worker: stopped gracefully during startup rollback",
@@ -400,7 +400,7 @@ describe("V1 managed local process release gate", () => {
         const checked = runScript("check-v1-local.ps1");
         expect(checked.status).not.toBe(0);
         expect(checked.stdout).toContain(
-          "V1 local status: START_FAILED_STOP_PENDING",
+          "V1 local status: startup rollback pending",
         );
 
         touch(releaseFile);
@@ -503,7 +503,7 @@ describe("V1 managed local process release gate", () => {
         const checked = runScript("check-v1-local.ps1");
         expect(checked.status).not.toBe(0);
         expect(checked.stdout).toContain(
-          "V1 local status: CRASHED_WORKER_REVIEW_REQUIRED",
+          "V1 local status: crashed worker review required",
         );
         expect(`${checked.stdout}\n${checked.stderr}`).toContain(
           "may be orphaned",
