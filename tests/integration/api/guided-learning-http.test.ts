@@ -6,6 +6,7 @@ import type { InjectOptions } from "light-my-request";
 import { describe, expect, it } from "vitest";
 import { createApiRuntime } from "../../../apps/api/src/runtime.js";
 import { createApiServer } from "../../../apps/api/src/server.js";
+import { GuidedLearningStorageError } from "../../../packages/storage/dist/index.js";
 
 describe("Guided Learning BYOK and PDF HTTP boundaries", () => {
   it("serves a registered PDF inline after refresh and rejects invalid page requests", async () => {
@@ -444,4 +445,142 @@ describe("Guided Learning BYOK and PDF HTTP boundaries", () => {
     await app.close();
     await rm(directory, { recursive: true, force: true });
   });
+
+  it("returns a safe 500 when the Guided Learning database is closed", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "research-reading-guided-closed-database-"),
+    );
+    const app = createApiServer({
+      databasePath: join(directory, "runtime.sqlite"),
+      contentRoot: join(directory, "content"),
+    });
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/guided-learning/sessions",
+      payload: {
+        project_id: "proj_closed",
+        document_version_id: "docv_closed",
+        learning_goal: "Exercise a closed persistence path",
+      },
+    });
+    expect(created.statusCode).toBe(200);
+
+    const internals = guidedLearningInternals(app);
+    internals.repository.database.close();
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/guided-learning/sessions/${created.json().data.session.session_id}`,
+    });
+    expectSafeInternalError(
+      response.statusCode,
+      response.json(),
+      response.body,
+      [directory],
+    );
+
+    await app.close().catch(() => undefined);
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it("maps a transaction storage failure to a safe HTTP 500", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "research-reading-guided-transaction-"),
+    );
+    const app = createApiServer({
+      databasePath: join(directory, "runtime.sqlite"),
+      contentRoot: join(directory, "content"),
+    });
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/guided-learning/sessions",
+      payload: {
+        project_id: "proj_transaction",
+        document_version_id: "docv_transaction",
+        learning_goal: "Exercise a transaction failure",
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    const sessionId = created.json().data.session.session_id as string;
+    const internals = guidedLearningInternals(app);
+    internals.runtime.generateDirections(sessionId);
+    internals.repository.save = () => {
+      throw new GuidedLearningStorageError(
+        "TRANSACTION_FAILED",
+        `SQLITE transaction failed at ${directory}`,
+      );
+    };
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/guided-learning/sessions/${sessionId}/commands`,
+      payload: {
+        contract_version: "guided-learning.v1",
+        event: "SELECT_DIRECTION",
+        payload: { direction_id: "direction_method" },
+        idempotency_key: "transaction-failure",
+      },
+    });
+    expectSafeInternalError(
+      response.statusCode,
+      response.json(),
+      response.body,
+      [directory],
+    );
+
+    await app.close();
+    await rm(directory, { recursive: true, force: true });
+  });
 });
+
+type GuidedLearningInternals = {
+  runtime: {
+    generateDirections(sessionId: string): unknown;
+  };
+  repository: {
+    database: { close(): void };
+    save: (...args: unknown[]) => void;
+  };
+};
+
+function guidedLearningInternals(app: unknown): GuidedLearningInternals {
+  const handlers = (
+    app as {
+      guidedLearningApiHandlers: {
+        runtime: {
+          generateDirections(sessionId: string): unknown;
+          repository: GuidedLearningInternals["repository"];
+        };
+      };
+    }
+  ).guidedLearningApiHandlers;
+  return {
+    runtime: handlers.runtime,
+    repository: handlers.runtime.repository,
+  };
+}
+
+function expectSafeInternalError(
+  statusCode: number,
+  body: unknown,
+  rawBody: string,
+  sensitiveValues: string[],
+): void {
+  expect(statusCode).toBe(500);
+  expect(body).toMatchObject({
+    schema_version: "api.v1",
+    error: { code: "INTERNAL_ERROR", details: [] },
+  });
+  const lowerBody = rawBody.toLowerCase();
+  for (const forbidden of [
+    "sqlite",
+    "database",
+    "closed",
+    "prepare",
+    "transaction",
+    "stack",
+    "error:",
+    "d:\\",
+    ...sensitiveValues.map((value) => value.toLowerCase()),
+  ])
+    expect(lowerBody).not.toContain(forbidden.toLowerCase());
+}

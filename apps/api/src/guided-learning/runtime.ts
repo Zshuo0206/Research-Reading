@@ -1,10 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import {
-  applyGuidedLearningEvent,
-  GUIDED_LEARNING_CLIENT_COMMANDS,
-  GUIDED_LEARNING_CONTRACT_VERSION,
-  validateGuidedLearningSessionConsistency,
-} from "../../../../packages/contracts/dist/wave1/src/index.js";
 import type {
   GuidedLearningCommandName,
   GuidedLearningEvent,
@@ -13,14 +7,20 @@ import type {
   GuidedLearningState,
 } from "../../../../packages/contracts/dist/wave1/src/index.js";
 import {
+  applyGuidedLearningEvent,
+  GUIDED_LEARNING_CLIENT_COMMANDS,
+  GUIDED_LEARNING_CONTRACT_VERSION,
+  validateGuidedLearningSessionConsistency,
+} from "../../../../packages/contracts/dist/wave1/src/index.js";
+import type { GuidedLearningCommandRecord } from "../../../../packages/storage/dist/index.js";
+import {
   type GuidedLearningGenerationJobPayload,
   type GuidedLearningJobKind,
   type GuidedLearningJobWrite,
+  type GuidedLearningProviderConfig,
   type GuidedLearningSessionRepository,
   GuidedLearningStorageError,
-  type GuidedLearningProviderConfig,
 } from "../../../../packages/storage/dist/index.js";
-import type { GuidedLearningCommandRecord } from "../../../../packages/storage/dist/index.js";
 import { GuidedLearningMockAdapter } from "./mock.js";
 
 type Value = Record<string, unknown>;
@@ -45,7 +45,8 @@ export class GuidedLearningRuntimeError extends Error {
       | "IDEMPOTENCY_CONFLICT"
       | "REVISION_CONFLICT"
       | "EVIDENCE_NOT_READY"
-      | "RETRY_NOT_ALLOWED",
+      | "RETRY_NOT_ALLOWED"
+      | "INTERNAL_ERROR",
     message: string,
   ) {
     super(message);
@@ -823,13 +824,20 @@ function requiresQuestionPointer(operation: GuidedLearningJobKind): boolean {
 }
 function mapStorageError(error: unknown): GuidedLearningRuntimeError {
   if (error instanceof GuidedLearningRuntimeError) return error;
-  if (error instanceof GuidedLearningStorageError)
+  if (error instanceof GuidedLearningStorageError) {
+    if (
+      error.code === "NOT_FOUND" ||
+      error.code === "REVISION_CONFLICT" ||
+      error.code === "IDEMPOTENCY_CONFLICT"
+    )
+      return new GuidedLearningRuntimeError(error.code, error.message);
     return new GuidedLearningRuntimeError(
-      error.code === "TRANSACTION_FAILED" ? "VALIDATION_FAILED" : error.code,
-      error.message,
+      "INTERNAL_ERROR",
+      "Guided learning persistence failed",
     );
+  }
   return new GuidedLearningRuntimeError(
-    "VALIDATION_FAILED",
+    "INTERNAL_ERROR",
     "Guided learning persistence failed",
   );
 }
