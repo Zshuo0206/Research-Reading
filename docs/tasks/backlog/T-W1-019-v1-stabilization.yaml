@@ -1,7 +1,7 @@
 task_id: T-W1-019
 title: "V1.0 Stabilization"
 owner_role: primary-agent
-status: REVIEW
+status: BLOCKED
 wave: 1
 
 objective: "基于 5473ca0 对 V1.0 真实本地用户闭环执行系统稳定化，修复 PDF 导航可观察性、Web 假绿、Evidence 语义、API 错误一致性、BYOK 默认边界、Worker 可靠性和 Windows 本地运维。"
@@ -128,3 +128,20 @@ rollback_plan: "按逻辑提交逐个 revert；不涉及 migration 或公共 Sch
 deliverables:
   - "上一轮提交已推送 origin/fix/v1-stabilization；第三轮形成新的本地逻辑提交与 Level 3 证据，不 push、不创建 PR/tag/Release。"
   - "本地 fix/v1-stabilization 逻辑提交、Level 3 摘要和完整测试证据；不 push、不创建 PR/tag/Release。"
+round_four_closure:
+  base_commit: "ad26fdf41815c0d9a0e68c916f3643e5b46ca313"
+  status: "BLOCKED"
+  implementation:
+    - "API/Web/Worker ownership is persisted immediately as STARTING_API/STARTING_WEB/STARTING_WORKER with atomic same-directory state replacement."
+    - "worker_ready_observed separates safe pre-ready cleanup from ready-worker graceful rollback and crash review."
+    - "Explicit crashed-worker acknowledgement archives state and cleans owned API/Web without mutating Jobs or runtime data."
+    - "The seven-scenario Windows release test no longer overwrites production Worker dist and uses real StorageRepository, JobRuntime, runWorkerService and runWorkerLoop for claimed-job rollback."
+  verification:
+    - "PowerShell static 9/9; Worker loop 13/13; npm test 33/33; runtime integration 27/27; full integration 103/103; V1 smoke 1/1; Playwright 3/3."
+    - "lint, typecheck, build, 10-schema contract/no drift, platform smoke, security 293/268 and npm audit 0 vulnerabilities passed."
+    - "Windows managed Release Gate collected 7 tests but all were blocked before process creation by external EADDRINUSE on 127.0.0.1:4310; no managed state was created and the listener was not terminated."
+  remaining_gate:
+    - "After the user safely releases port 4310, rerun npm run test:v1-managed-windows and the manual start/check/stop lifecycle with temporary SQLite/content paths."
+    - "Chrome/Edge PDF viewer, real DeepSeek four-operation behavior, and Claim/citation scientific semantics remain manual acceptance items."
+  prohibited_actions_confirmed:
+    - "No push, force push, PR, tag, Release, main change/merge, contract/migration/Storage schema change, Acceptance access, real external model call, real secret read, external listener termination or production Worker dist overwrite."

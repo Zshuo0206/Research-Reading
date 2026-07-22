@@ -1,11 +1,15 @@
 # Current State
 
 最后更新：2026-07-22（Asia/Shanghai）
-状态：`V1_STABILIZATION_EXTERNAL_REVIEW_PENDING`
+状态：`BLOCKED`
 
 第三轮定向修复基于已推送的 `130502353a500c8767be28739782d2f0e7f11632`：启动顺序改为 API health → Web health → Worker，Worker 创建后的启动失败统一使用 control file 回滚并以 `STARTING`、`READY`、`START_FAILED_STOP_PENDING` 记录生命周期；fixed-port managed smoke 已从标准 `npm test` 分离到 `npm run test:v1-managed-windows`；Guided Learning 持久化故障安全返回 `INTERNAL_ERROR`/500；`fast-uri` 已从 3.1.3/4.1.0 定向更新为 3.1.4/4.1.1。
 
 第三轮验证：`npm ci --ignore-scripts`、lint（86 files）、typecheck、build、标准 `npm test`（4 files/30 tests）、runtime integration（6/27）、完整 integration（18/103）、V1 smoke（1/1）、Playwright（3/3）、contract（10 schemas）、platform smoke、security（293 files/268 text files）和 `npm audit --omit=dev` 均通过，audit 为 0 vulnerabilities。独立 Windows managed Release Gate 的 3 个真实进程测试因外部 `127.0.0.1:4310` 监听者而明确阻塞；未终止占用进程，因此不能宣称完整 Release Gate 通过。
+
+第四轮收口基于 `ad26fdf41815c0d9a0e68c916f3643e5b46ca313`：managed state 从 API 创建后即按 `STARTING_API`、`STARTING_WEB`、`STARTING_WORKER`、`READY` 分阶段原子写入，并显式记录 `worker_ready_observed`。ready 前自行退出的 Worker 不要求不可能产生的 `CONTROL_FILE` stopped 事件，可按未进入 Job loop 的启动失败清理；ready 后无该事件的异常死亡进入 `CRASHED_WORKER_REVIEW_REQUIRED`，普通 stop 拒绝清理，只有显式 `-AcknowledgeCrashedWorker` 才会在保留数据库、content、日志和 crash state 归档的前提下停止 owned API/Web，且不修改任何 Job。非 managed 强杀、断电或系统崩溃后的 orphan RUNNING 自动恢复仍未实现。
+
+第四轮 Release Gate 已改为 7 个场景，测试不再覆盖正式 `apps/worker/dist/worker.js`；测试专用临时入口只在显式测试模式下接受绝对且存在、非 `apps/**/dist`、非 Acceptance 的路径。claimed-job 回滚场景已按真实 `StorageRepository`、`JobRuntime`、`runWorkerService` 和 `runWorkerLoop` 编排，断言真实 SQLite claim、当前 Job 收口、第二个 Job 不被领取和最终 RUNNING 计数为 0，但当前尚未进入该 fixed-port 进程路径。代码级矩阵已通过：PowerShell static 9/9、Worker loop 13/13、标准 `npm test` 4 files/33 tests、runtime integration 6/27、完整 integration 18/103、V1 smoke 1/1、Playwright 3/3、lint、typecheck、build、10-schema contract、platform smoke、security 293/268 和 audit 0 vulnerabilities。Windows managed Release Gate 7/7 均在进入进程路径前被外部 `127.0.0.1:4310` listener 阻断；未创建 managed state，也未终止外部进程。因此当前状态为 `BLOCKED`，端口安全释放后必须重跑 `npm run test:v1-managed-windows` 和手工 start/check/stop 闭环，不能宣称 Release Gate 通过。
 
 ## T-W1-019 稳定化分支
 
