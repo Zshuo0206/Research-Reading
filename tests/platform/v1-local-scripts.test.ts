@@ -39,6 +39,12 @@ describe("V1 local PowerShell operations", () => {
     expect(start).toContain("GetActiveTcpListeners");
     expect(start).toContain('WindowStyle = "Hidden"');
     expect(start).toContain("processes.json");
+    expect(start).toContain("lifecycle_status = $LifecycleStatus");
+    expect(start).toContain('Write-ManagedState -LifecycleStatus "STARTING"');
+    expect(start).toContain('Write-ManagedState -LifecycleStatus "READY"');
+    expect(start).toContain(
+      'Write-ManagedState -LifecycleStatus "START_FAILED_STOP_PENDING"',
+    );
     expect(start).not.toContain("[int]$ApiPort");
     expect(start).not.toContain("[int]$WebPort");
     expect(stop).toContain("actualStart");
@@ -49,6 +55,29 @@ describe("V1 local PowerShell operations", () => {
     );
     expect(stop).not.toMatch(
       /Get-Process\s+node|Stop-Process\s+-Name|taskkill|Stop-Process[^\n]+worker/,
+    );
+    expect(start).not.toMatch(
+      /Get-Process\s+node|Stop-Process\s+-Name|taskkill|Stop-Process[^\n]+worker/,
+    );
+  });
+
+  it("starts the Worker only after API and Web health checks complete", () => {
+    const start = readFileSync(resolve(scripts[0]), "utf8");
+    const apiHealth = start.indexOf("Wait-ApiHealth -Record $apiRecord");
+    const webStart = start.indexOf(
+      "$webRecord = Start-V1OwnedProcess @webStartParameters",
+    );
+    const webHealth = start.indexOf("Wait-WebHealth -Record $webRecord");
+    const workerStart = start.indexOf(
+      '$workerRecord = Start-V1OwnedProcess -Role "worker"',
+    );
+
+    expect(apiHealth).toBeGreaterThanOrEqual(0);
+    expect(webStart).toBeGreaterThan(apiHealth);
+    expect(webHealth).toBeGreaterThan(webStart);
+    expect(workerStart).toBeGreaterThan(webHealth);
+    expect(start.indexOf("Request-ManagedWorkerStop")).toBeLessThan(
+      start.indexOf("Stop-OwnedApiAndWeb", start.indexOf("} catch {")),
     );
   });
 

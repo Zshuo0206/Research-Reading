@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
   [string]$DatabasePath,
-  [string]$ContentRoot
+  [string]$ContentRoot,
+  [ValidateRange(1, 300)]
+  [int]$WorkerStopTimeoutSeconds = 45
 )
 
 Set-StrictMode -Version Latest
@@ -50,13 +52,32 @@ function Test-WorkerReadyEvent {
   )
 }
 
-function Test-OwnedProcessRunning {
+function Test-ControlFileStoppedEvent {
+  param([string]$Path)
+  foreach ($event in @(Read-JsonEvents -Path $Path)) {
+    if (
+      [string]$event.event -eq "worker_platform_shell_stopped" -and
+      [string]$event.signal -eq "CONTROL_FILE"
+    ) { return $true }
+  }
+  return $false
+}
+
+function Get-OwnedProcess {
   param($Record)
   $process = Get-Process -Id ([int]$Record.pid) -ErrorAction SilentlyContinue
-  if (-not $process) { return $false }
+  if (-not $process) { return $null }
   $actualStart = $process.StartTime.ToUniversalTime()
   $expectedStart = ([DateTime]$Record.start_time_utc).ToUniversalTime()
-  return $actualStart.Ticks -eq $expectedStart.Ticks
+  if ($actualStart.Ticks -ne $expectedStart.Ticks) {
+    throw "$($Record.role): PID $($Record.pid) was reused; leaving it untouched."
+  }
+  return $process
+}
+
+function Test-OwnedProcessRunning {
+  param($Record)
+  return $null -ne (Get-OwnedProcess -Record $Record)
 }
 
 if (Test-Path -LiteralPath $statePath) {
@@ -94,6 +115,7 @@ New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $ContentRoot -Force | Out-Null
 $nodePath = (Get-Command node -ErrorAction Stop).Source
 $started = [System.Collections.Generic.List[object]]::new()
+$workerRecord = $null
 $managedEnvironment = @(
   "SQLITE_DATABASE_PATH",
   "CONTENT_STORAGE_ROOT",
@@ -137,6 +159,136 @@ function Start-V1OwnedProcess {
   return $record
 }
 
+function Write-ManagedState {
+  param(
+    [ValidateSet("STARTING", "READY", "START_FAILED_STOP_PENDING")]
+    [string]$LifecycleStatus
+  )
+  [ordered]@{
+    schema_version = "v1-local-processes.v3"
+    repo_root = $repoRoot
+    run_id = $runId
+    run_directory = $runDirectory
+    worker_stop_file = $workerStopFile
+    api_url = $apiUrl
+    web_url = $webUrl
+    database_path = $DatabasePath
+    content_root = $ContentRoot
+    lifecycle_status = $LifecycleStatus
+    logs = $logs
+    processes = @($started)
+  } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $statePath -Encoding utf8
+}
+
+function Test-ApiHealth {
+  try {
+    $health = Invoke-RestMethod -Uri "$apiUrl/health" -TimeoutSec 2
+    return $health.status -eq "ok"
+  } catch { return $false }
+}
+
+function Test-WebHealth {
+  try {
+    $response = Invoke-WebRequest -Uri $webUrl -UseBasicParsing -TimeoutSec 2
+    return $response.StatusCode -eq 200
+  } catch { return $false }
+}
+
+function Wait-ApiHealth {
+  param($Record)
+  $deadline = [DateTime]::UtcNow.AddSeconds(30)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    if (-not (Test-OwnedProcessRunning -Record $Record)) {
+      throw "API exited before its health check passed."
+    }
+    if (Test-ApiHealth) {
+      Write-Output "api: healthy"
+      return
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "API health did not pass within 30 seconds."
+}
+
+function Wait-WebHealth {
+  param($Record)
+  $deadline = [DateTime]::UtcNow.AddSeconds(30)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    if (-not (Test-OwnedProcessRunning -Record $Record)) {
+      throw "Web exited before its health check passed."
+    }
+    if (Test-WebHealth) {
+      Write-Output "web: healthy"
+      return
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Web health did not pass within 30 seconds."
+}
+
+function Wait-WorkerReady {
+  param($Record)
+  $deadline = [DateTime]::UtcNow.AddSeconds(30)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    if (-not (Test-OwnedProcessRunning -Record $Record)) {
+      throw "Worker exited before a valid ready event was observed."
+    }
+    $workerErrors = @(Read-JsonEvents -Path $logs.worker_stderr | Where-Object {
+      @("worker_start_failed", "worker_platform_shell_error") -contains [string]$_.event
+    })
+    if ($workerErrors.Count -gt 0) {
+      throw "Worker emitted a startup failure event before becoming ready."
+    }
+    $ready = @(
+      Read-JsonEvents -Path $logs.worker_stdout | Where-Object {
+        Test-WorkerReadyEvent -Event $_
+      }
+    ).Count -gt 0
+    if ($ready -and (Test-ApiHealth) -and (Test-WebHealth)) { return }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Worker did not produce valid ready evidence while API and Web remained healthy within 30 seconds."
+}
+
+function Request-ManagedWorkerStop {
+  New-Item -ItemType File -Path $workerStopFile -Force | Out-Null
+  Write-Output "worker: startup rollback control-file stop requested"
+}
+
+function Wait-ManagedWorkerExit {
+  param($Record)
+  $deadline = [DateTime]::UtcNow.AddSeconds($WorkerStopTimeoutSeconds)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    if (-not (Test-OwnedProcessRunning -Record $Record)) { return $true }
+    Start-Sleep -Milliseconds 250
+  }
+  return -not (Test-OwnedProcessRunning -Record $Record)
+}
+
+function Wait-ControlFileStoppedEvent {
+  $deadline = [DateTime]::UtcNow.AddSeconds(5)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    if (Test-ControlFileStoppedEvent -Path $logs.worker_stdout) { return $true }
+    Start-Sleep -Milliseconds 100
+  }
+  return Test-ControlFileStoppedEvent -Path $logs.worker_stdout
+}
+
+function Stop-OwnedApiAndWeb {
+  foreach ($role in @("api", "web")) {
+    $record = @($started | Where-Object { $_.role -eq $role })[0]
+    if (-not $record) { continue }
+    $process = Get-OwnedProcess -Record $record
+    if (-not $process) {
+      Write-Output "$($role): already stopped"
+      continue
+    }
+    Stop-Process -Id ([int]$record.pid)
+    try { [void]$process.WaitForExit(5000) } catch {}
+    Write-Output "$($role): stopped"
+  }
+}
+
 try {
   [Environment]::SetEnvironmentVariable("SQLITE_DATABASE_PATH", $DatabasePath, "Process")
   [Environment]::SetEnvironmentVariable("CONTENT_STORAGE_ROOT", $ContentRoot, "Process")
@@ -147,11 +299,9 @@ try {
   $apiScript = '"' + (Join-Path $repoRoot "apps/api/dist/server.js") + '"'
   $workerScript = '"' + (Join-Path $repoRoot "apps/worker/dist/worker.js") + '"'
   $viteScript = '"' + (Join-Path $repoRoot "node_modules/vite/bin/vite.js") + '"'
-  Start-V1OwnedProcess -Role "api" -Arguments @($apiScript) -StandardOutput $logs.api_stdout -StandardError $logs.api_stderr | Out-Null
 
-  [Environment]::SetEnvironmentVariable("WORKER_STOP_FILE", $workerStopFile, "Process")
-  $workerRecord = Start-V1OwnedProcess -Role "worker" -Arguments @($workerScript) -StandardOutput $logs.worker_stdout -StandardError $logs.worker_stderr
-  [Environment]::SetEnvironmentVariable("WORKER_STOP_FILE", $null, "Process")
+  $apiRecord = Start-V1OwnedProcess -Role "api" -Arguments @($apiScript) -StandardOutput $logs.api_stdout -StandardError $logs.api_stderr
+  Wait-ApiHealth -Record $apiRecord
 
   $webStartParameters = @{
     Role = "web"
@@ -160,68 +310,45 @@ try {
     StandardOutput = $logs.web_stdout
     StandardError = $logs.web_stderr
   }
-  Start-V1OwnedProcess @webStartParameters | Out-Null
+  $webRecord = Start-V1OwnedProcess @webStartParameters
+  Wait-WebHealth -Record $webRecord
 
-  [ordered]@{
-    schema_version = "v1-local-processes.v2"
-    repo_root = $repoRoot
-    run_id = $runId
-    run_directory = $runDirectory
-    worker_stop_file = $workerStopFile
-    api_url = $apiUrl
-    web_url = $webUrl
-    database_path = $DatabasePath
-    content_root = $ContentRoot
-    logs = $logs
-    processes = @($started)
-  } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $statePath -Encoding utf8
+  [Environment]::SetEnvironmentVariable("WORKER_STOP_FILE", $workerStopFile, "Process")
+  $workerRecord = Start-V1OwnedProcess -Role "worker" -Arguments @($workerScript) -StandardOutput $logs.worker_stdout -StandardError $logs.worker_stderr
+  [Environment]::SetEnvironmentVariable("WORKER_STOP_FILE", $null, "Process")
+  Write-ManagedState -LifecycleStatus "STARTING"
+  Wait-WorkerReady -Record $workerRecord
+  Write-ManagedState -LifecycleStatus "READY"
 
-  $deadline = [DateTime]::UtcNow.AddSeconds(30)
-  $apiReady = $false
-  $webReady = $false
-  $workerReady = $false
-  while ([DateTime]::UtcNow -lt $deadline -and (-not $apiReady -or -not $webReady -or -not $workerReady)) {
-    if (-not (Test-OwnedProcessRunning -Record $workerRecord)) {
-      throw "Worker exited before a valid ready event was observed."
-    }
-    $workerErrors = @(Read-JsonEvents -Path $logs.worker_stderr | Where-Object {
-      @("worker_start_failed", "worker_platform_shell_error") -contains [string]$_.event
-    })
-    if ($workerErrors.Count -gt 0) {
-      throw "Worker emitted a startup failure event before becoming ready."
-    }
-    $workerReady = @(
-      Read-JsonEvents -Path $logs.worker_stdout | Where-Object {
-        Test-WorkerReadyEvent -Event $_
-      }
-    ).Count -gt 0
-    try {
-      $health = Invoke-RestMethod -Uri "$apiUrl/health" -TimeoutSec 2
-      $apiReady = $health.status -eq "ok"
-    } catch { $apiReady = $false }
-    try {
-      $webResponse = Invoke-WebRequest -Uri $webUrl -UseBasicParsing -TimeoutSec 2
-      $webReady = $webResponse.StatusCode -eq 200
-    } catch { $webReady = $false }
-    if (-not $apiReady -or -not $webReady -or -not $workerReady) {
-      Start-Sleep -Milliseconds 250
-    }
-  }
-  if (-not $apiReady -or -not $webReady -or -not $workerReady) {
-    throw "V1 services did not produce API, Web and Worker ready evidence within 30 seconds."
-  }
   Write-Output "V1 local services ready: $webUrl (API $apiUrl; Worker ready verified)."
   Write-Output "Run: $runId"
   Write-Output "State: $statePath"
 } catch {
-  foreach ($record in @($started | Sort-Object -Property role -Descending)) {
-    if (Test-OwnedProcessRunning -Record $record) {
-      Stop-Process -Id ([int]$record.pid) -ErrorAction SilentlyContinue
+  $startupFailure = $_
+  if ($workerRecord) {
+    try { Write-ManagedState -LifecycleStatus "START_FAILED_STOP_PENDING" } catch {
+      Write-Warning "Could not update managed lifecycle state after Worker startup failure."
     }
+    Request-ManagedWorkerStop
+    if (-not (Wait-ManagedWorkerExit -Record $workerRecord)) {
+      try { Write-ManagedState -LifecycleStatus "START_FAILED_STOP_PENDING" } catch {}
+      throw "Startup failed and Worker did not exit within $WorkerStopTimeoutSeconds seconds. It may still be completing its current Job. API and Web remain running; managed state and logs were preserved. Re-run stop-v1-local.ps1 later."
+    }
+    if (-not (Wait-ControlFileStoppedEvent)) {
+      try { Write-ManagedState -LifecycleStatus "START_FAILED_STOP_PENDING" } catch {}
+      throw "Startup failed and Worker exited without the expected CONTROL_FILE stopped event. API and Web remain running; managed state and logs were preserved for diagnosis."
+    }
+    Write-Output "worker: stopped gracefully during startup rollback"
+    Stop-OwnedApiAndWeb
+    Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $workerStopFile -Force -ErrorAction SilentlyContinue
+    throw $startupFailure
   }
+
+  Stop-OwnedApiAndWeb
   Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $workerStopFile -Force -ErrorAction SilentlyContinue
-  throw
+  throw $startupFailure
 } finally {
   foreach ($name in $managedEnvironment) {
     [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], "Process")

@@ -44,6 +44,18 @@ function Test-WorkerReadyEvent {
 
 $unhealthy = $false
 $degraded = $false
+if (
+  -not ($state.PSObject.Properties.Name -contains "lifecycle_status") -or
+  [string]$state.lifecycle_status -ne "READY"
+) {
+  $lifecycleStatus = if ($state.PSObject.Properties.Name -contains "lifecycle_status") {
+    [string]$state.lifecycle_status
+  } else {
+    "UNKNOWN"
+  }
+  Write-Output "managed lifecycle: $lifecycleStatus"
+  $unhealthy = $true
+}
 foreach ($record in $state.processes) {
   $process = Get-Process -Id ([int]$record.pid) -ErrorAction SilentlyContinue
   if (-not $process) {
