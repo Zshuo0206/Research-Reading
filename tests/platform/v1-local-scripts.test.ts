@@ -29,39 +29,59 @@ describe("V1 local PowerShell operations", () => {
     expect(result.status, result.stderr).toBe(0);
   });
 
-  it("records ownership and stops only a matching PID plus start time", () => {
+  it("records each partial ownership state atomically before advancing", () => {
     const start = readFileSync(resolve(scripts[0]), "utf8");
-    const stop = readFileSync(resolve(scripts[2]), "utf8");
 
-    expect(start).toContain("start_time_utc");
-    expect(start).toContain("worker_stop_file");
-    expect(start).toContain("worker_platform_shell_ready");
-    expect(start).toContain("GetActiveTcpListeners");
-    expect(start).toContain('WindowStyle = "Hidden"');
-    expect(start).toContain("processes.json");
-    expect(start).toContain("lifecycle_status = $LifecycleStatus");
-    expect(start).toContain('Write-ManagedState -LifecycleStatus "STARTING"');
-    expect(start).toContain('Write-ManagedState -LifecycleStatus "READY"');
+    expect(start).toContain('schema_version = "v1-local-processes.v4"');
     expect(start).toContain(
-      'Write-ManagedState -LifecycleStatus "START_FAILED_STOP_PENDING"',
+      "worker_ready_observed = [bool]$workerReadyObserved",
     );
-    expect(start).not.toContain("[int]$ApiPort");
-    expect(start).not.toContain("[int]$WebPort");
-    expect(stop).toContain("actualStart");
-    expect(stop).toContain("PID $($Record.pid) was reused");
-    expect(stop).toContain("CONTROL_FILE");
-    expect(stop.indexOf('foreach ($role in @("api", "web"))')).toBeGreaterThan(
-      stop.indexOf("Test-ControlFileStoppedEvent"),
+    expect(start).toContain("processes = @($started)");
+    expect(start).toContain('LifecycleStatus = "STARTING_WEB"');
+    expect(start).toContain('-LifecycleStatus "STARTING_API"');
+    expect(start).toContain('-LifecycleStatus "STARTING_WORKER"');
+    expect(start.indexOf("$started.Add($record)")).toBeLessThan(
+      start.indexOf("Write-ManagedState -LifecycleStatus $LifecycleStatus"),
     );
-    expect(stop).not.toMatch(
-      /Get-Process\s+node|Stop-Process\s+-Name|taskkill|Stop-Process[^\n]+worker/,
+    expect(start).toContain('Write-ManagedState -LifecycleStatus "READY"');
+    expect(start.indexOf("$workerReadyObserved = $true")).toBeLessThan(
+      start.indexOf('Write-ManagedState -LifecycleStatus "READY"'),
+    );
+    expect(start).toContain('$stateTemporaryPath = "$statePath.tmp"');
+    expect(start).toContain(
+      "Set-Content -LiteralPath $stateTemporaryPath -Value $stateJson",
+    );
+    expect(start).toContain("[System.IO.File]::Replace");
+    expect(start).toContain(
+      "Move-Item -LiteralPath $stateTemporaryPath -Destination $statePath",
+    );
+    expect(start).toContain(
+      "Remove-Item -LiteralPath $stateTemporaryPath -Force -ErrorAction SilentlyContinue",
     );
     expect(start).not.toMatch(
-      /Get-Process\s+node|Stop-Process\s+-Name|taskkill|Stop-Process[^\n]+worker/,
+      /ConvertTo-Json[^\n]*\|\s*Set-Content\s+-LiteralPath\s+\$statePath/,
     );
   });
 
-  it("starts the Worker only after API and Web health checks complete", () => {
+  it("uses the production Worker by default and isolates the test entrypoint gate", () => {
+    const start = readFileSync(resolve(scripts[0]), "utf8");
+
+    expect(start).toContain(
+      '$productionWorkerEntrypoint = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "apps/worker/dist/worker.js"))',
+    );
+    expect(start).toContain(
+      '[Environment]::GetEnvironmentVariable("V1_LOCAL_TEST_MODE", "Process") -eq "1"',
+    );
+    expect(start).toContain("V1_LOCAL_WORKER_ENTRYPOINT");
+    expect(start).toContain("V1_LOCAL_TEST_ROLLBACK_TRIGGER_FILE");
+    expect(start).toContain("must not be inside repo apps/**/dist");
+    expect(start).toContain("must not reference an acceptance workspace");
+    expect(start).toContain("worker_entrypoint = $workerEntrypoint");
+    expect(start).not.toContain("WORKFLOW_BYOK_API_KEY");
+    expect(start).not.toContain("MODEL_API_KEY");
+  });
+
+  it("starts Worker last and distinguishes pre-ready, pending and crashed rollback paths", () => {
     const start = readFileSync(resolve(scripts[0]), "utf8");
     const apiHealth = start.indexOf("Wait-ApiHealth -Record $apiRecord");
     const webStart = start.indexOf(
@@ -76,17 +96,54 @@ describe("V1 local PowerShell operations", () => {
     expect(webStart).toBeGreaterThan(apiHealth);
     expect(webHealth).toBeGreaterThan(webStart);
     expect(workerStart).toBeGreaterThan(webHealth);
+    expect(start).toContain("if (-not $workerReadyObserved) {");
+    expect(start).toContain(
+      'Write-ManagedState -LifecycleStatus "START_FAILED_STOP_PENDING"',
+    );
+    expect(start).toContain(
+      'Write-ManagedState -LifecycleStatus "CRASHED_WORKER_REVIEW_REQUIRED"',
+    );
     expect(start.indexOf("Request-ManagedWorkerStop")).toBeLessThan(
       start.indexOf("Stop-OwnedApiAndWeb", start.indexOf("} catch {")),
     );
+    expect(start).not.toMatch(
+      /Get-Process\s+node|Stop-Process\s+-Name|taskkill|Stop-Process[^\n]+worker/,
+    );
   });
 
-  it("keeps secrets out of script output and preserves runtime data on stop", () => {
+  it("supports partial stop and restricts crashed-Worker acknowledgement", () => {
+    const stop = readFileSync(resolve(scripts[2]), "utf8");
+
+    expect(stop).toContain("[switch]$AcknowledgeCrashedWorker");
+    expect(stop).toContain("if (-not $workerRecord) {");
+    expect(stop).toContain("if (-not $workerReadyObserved) {");
+    expect(stop).toContain("CRASHED_WORKER_REVIEW_REQUIRED");
+    expect(stop).toContain("crashed-worker-state.json");
+    expect(stop).toContain("no Job or database row will be changed");
+    expect(stop).toContain("This was not a graceful Worker stop");
+    expect(stop).toContain("actualStart");
+    expect(stop).toContain("PID $($Record.pid) was reused");
+    expect(stop).not.toMatch(
+      /Get-Process\s+node|Stop-Process\s+-Name|taskkill|Stop-Process[^\n]+worker/,
+    );
+  });
+
+  it("reports lifecycle-specific non-ready status without calling it healthy", () => {
+    const check = readFileSync(resolve(scripts[1]), "utf8");
+
+    expect(check).toContain("V1 local status: starting");
+    expect(check).toContain("V1 local status: START_FAILED_STOP_PENDING");
+    expect(check).toContain("V1 local status: CRASHED_WORKER_REVIEW_REQUIRED");
+    expect(check).toContain("a RUNNING Job may be orphaned");
+    expect(check.indexOf('if ($lifecycleStatus -ne "READY")')).toBeLessThan(
+      check.indexOf("api health: ok"),
+    );
+  });
+
+  it("keeps runtime data and logs on stop", () => {
     const combined = scripts
       .map((script) => readFileSync(resolve(script), "utf8"))
       .join("\n");
-    expect(combined).not.toContain("WORKFLOW_BYOK_API_KEY");
-    expect(combined).not.toContain("MODEL_API_KEY");
     expect(combined).not.toMatch(/Remove-Item[^\n]+(?:content|sqlite)/i);
     expect(combined).toContain(
       "Runtime database, content and per-run logs were preserved.",
