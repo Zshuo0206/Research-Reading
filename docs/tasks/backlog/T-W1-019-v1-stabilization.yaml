@@ -14,13 +14,16 @@ scope:
   - "强化 Worker readiness、循环异常隔离、有界退避、AbortSignal 和 graceful shutdown。"
   - "提供 Windows start/stop/check 脚本并更新本地运行文档。"
   - "第二轮定向修复：每次运行独立 stop file、固定端口和真实 Worker ready JSON；Guided Learning 非法输入安全映射；reference answer 仅由 resolved claims 重建。"
+  - "第三轮定向修复：Worker 最后启动且启动失败通过 control file 回滚；managed smoke 与 npm test 分层；持久化故障安全映射为 500；定向修复 fast-uri advisory。"
 out_of_scope:
+  - "第三轮不扩展为通用 Worker lease、orphan recovery、动态端口、部署系统或架构重构。"
   - "公共 Schema、数据库 migration、Evidence gate 放宽、PDF.js 重构、OCR、远程部署、多用户、ANALYZE、TRANSFER、外部模型自动测试。"
 dependencies:
   - task_id: T-W1-018
     reason: "稳定化基线为已推送的 release gate commit 5473ca01434093a1ba6dba49b7e9bb249b063bba。"
 writable_paths:
   - package.json
+  - package-lock.json
   - .env.example
   - apps/web/src/features/guided-learning/GuidedLearningWorkbench.tsx
   - apps/web/src/features/guided-learning/api.ts
@@ -57,7 +60,7 @@ writable_paths:
   - tests/integration/workflow/workflow.test.ts
   - tests/integration/v1/local-smoke.test.ts
   - tests/platform/v1-local-scripts.test.ts
-  - tests/platform/v1-local-managed-smoke.test.ts
+  - tests/release-gate/v1-local-managed-smoke.test.ts
   - docs/rfcs/RFC-W1-003-v1-stabilization-boundaries.md
   - docs/rfcs/README.md
   - docs/tasks/backlog/T-W1-019-v1-stabilization.yaml
@@ -94,7 +97,12 @@ acceptance_criteria:
   - "start/check/stop 固定使用 API 4310 与 Web 4173；端口冲突在启动进程前失败；ready 必须来自逐行解析的真实 Worker JSON。"
   - "Guided Learning 非法输入只返回 allowlist 中的 400/404/409 api.v1 错误；未知异常统一为不泄露内部信息的 500。"
   - "feedback reference answer 不信任模型原始字段，只由 resolved claims 构建；supported、mixed、all-insufficient 均有自动化覆盖。"
+  - "API 和 Web 健康后才启动 Worker；Worker 创建后的失败不直接强杀，回滚超时保留 START_FAILED_STOP_PENDING state 与 API/Web。"
+  - "标准 npm test 不运行 fixed-port managed smoke；独立 test:v1-managed-windows 覆盖正常生命周期、启动异常回滚和超时诊断保留。"
+  - "TRANSACTION_FAILED、关闭数据库及未知持久化错误返回安全 api.v1 INTERNAL_ERROR/500，既有 400/404/409 业务映射不回退。"
+  - "fast-uri 生产依赖解析不低于 3.1.4/4.1.1，security 与 npm audit --omit=dev 无 high vulnerability。"
 required_tests:
+  - npm run test:v1-managed-windows
   - npm run lint
   - npm run typecheck
   - npm run build
@@ -108,6 +116,7 @@ manual_acceptance:
   - "DeepSeek 真实生成和 Claim/Evidence 语义支持关系仍由人工复验。"
   - "Windows 实机 start/check/stop 使用固定端口，只有端口空闲时才能执行；不得终止外部占用进程来制造通过。"
 security_considerations:
+  - "fast-uri 生产依赖解析必须避开受影响版本；不得降低 audit level 或删除 security/audit 门禁。"
   - "不得读取、打印、保存或请求真实 API key；自动化仅用 Mock/fake secret。"
   - "所有临时 DB、content root、端口和进程必须隔离，不访问真实 acceptance 路径。"
 risks:
@@ -117,4 +126,5 @@ risks:
     mitigation: "主控 Agent 唯一写入，按 Web/API/Worker/Evidence/ops 顺序集成并逐批测试。"
 rollback_plan: "按逻辑提交逐个 revert；不涉及 migration 或公共 Schema，保留 5473ca0 release gate 基线。"
 deliverables:
+  - "上一轮提交已推送 origin/fix/v1-stabilization；第三轮形成新的本地逻辑提交与 Level 3 证据，不 push、不创建 PR/tag/Release。"
   - "本地 fix/v1-stabilization 逻辑提交、Level 3 摘要和完整测试证据；不 push、不创建 PR/tag/Release。"

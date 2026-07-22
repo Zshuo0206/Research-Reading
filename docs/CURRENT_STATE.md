@@ -3,6 +3,10 @@
 最后更新：2026-07-22（Asia/Shanghai）
 状态：`V1_STABILIZATION_EXTERNAL_REVIEW_PENDING`
 
+第三轮定向修复基于已推送的 `130502353a500c8767be28739782d2f0e7f11632`：启动顺序改为 API health → Web health → Worker，Worker 创建后的启动失败统一使用 control file 回滚并以 `STARTING`、`READY`、`START_FAILED_STOP_PENDING` 记录生命周期；fixed-port managed smoke 已从标准 `npm test` 分离到 `npm run test:v1-managed-windows`；Guided Learning 持久化故障安全返回 `INTERNAL_ERROR`/500；`fast-uri` 已从 3.1.3/4.1.0 定向更新为 3.1.4/4.1.1。
+
+第三轮验证：`npm ci --ignore-scripts`、lint（86 files）、typecheck、build、标准 `npm test`（4 files/30 tests）、runtime integration（6/27）、完整 integration（18/103）、V1 smoke（1/1）、Playwright（3/3）、contract（10 schemas）、platform smoke、security（293 files/268 text files）和 `npm audit --omit=dev` 均通过，audit 为 0 vulnerabilities。独立 Windows managed Release Gate 的 3 个真实进程测试因外部 `127.0.0.1:4310` 监听者而明确阻塞；未终止占用进程，因此不能宣称完整 Release Gate 通过。
+
 ## T-W1-019 稳定化分支
 
 `fix/v1-stabilization` 基于已核验的 `5473ca01434093a1ba6dba49b7e9bb249b063bba`，第一轮完成 PDF Evidence 导航可观察性、Web E2E 状态推进真实性、Mock Evidence 语义、API 错误 envelope、BYOK 默认边界、Worker 韧性、真实本地 HTTP smoke 和 Windows 运维脚本实现。第二轮定向修复进一步加入每次运行独立 stop control file、当前 Job 完成后退出、固定 4310/4173 端口、真实 Worker ready JSON 解析、Guided Learning 安全错误分类，以及仅由 resolved claims 构建 reference answer。没有公共 Schema、Storage、migration、状态机或 Evidence exact-match gate 变更。
@@ -75,7 +79,7 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-016：`INTEGRATED`，Mock 技术验收通过，发布状态为 `RELEASE_CANDIDATE_WITH_OPEN_BLOCKERS`；真实 BYOK 已完成人工验收，当前发布阻断转为 Evidence grounding。
 - T-W1-017：`INTEGRATED`，真实 BYOK Guided Generation、provider config migration、Worker 环境 secret、四类专用输入/输出约束、source-only Evidence verification、PDF content endpoint、刷新恢复和页码定位已进入 main；真实方向、问题、feedback、RETRY 和 EDIT_ANSWER 已人工通过，Evidence grounding 仍待诊断和修复。
 - T-W1-018：`IMPLEMENTING`，Worker 轮询、PDF 32 MiB 路由级 bodyLimit、结构化 413、DeepSeek V4 JSON 输出和 RETRY feedback pointer 阻断均已修复并完成人工复验。当前第五阻断是 Evidence grounding/resolution：真实 feedback 成功，但当前题目的 11 个 claims 均为 `INSUFFICIENT_EVIDENCE`、Evidence 数量为 0，confirm gate 正确阻止推进；具体降级根因尚未确定，下一步需要 per-claim 安全 resolution reason diagnostics。不扩大产品范围、不创建 tag。
-- T-W1-019：`REVIEW`，稳定化实现与第二轮五项定向修复保留在本地 `fix/v1-stabilization`，等待外部代码审查；Windows managed process smoke 和在线依赖审计仍有上述外部阻塞，不据此宣布 Release Gate 通过。
+- T-W1-019：`REVIEW`，上一轮至 `130502353a500c8767be28739782d2f0e7f11632` 已推送 `origin/fix/v1-stabilization`，尚未创建 PR、合并 main、tag 或 Release；第三轮新修复仍仅为本地提交。依赖审计已恢复通过，Windows managed process smoke 仍因外部固定端口占用待复验。
 - T-W1-005：保持 `DRAFT`；扩展后的双模式完整范围尚未进入 main；快速问答子集和 Guided Learning API/SQLite runtime 已存在，其余 Web 和完整产品验收仍待实施。
 - T-W1-006：保持 `DRAFT`；最小快速问答 Web 和 T-W1-015 Guided Learning Web 已存在，但其完整任务范围仍待实施。
 - 不据此改变其他任务或 Gate 的状态。
@@ -94,8 +98,8 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-018 RETRY pointer repair：真实 Session `learning_95664836-e2bb-4c74-9e07-496448c0e3e1` 从 FAILED/revision 11 恢复为 RETRYABLE_FAILURE/revision 12；反馈 Job 指针校验、真实 RETRY、EDIT_ANSWER 和页面恢复均已通过。
 - T-W1-018 Evidence grounding blocker：真实安全 Worker 诊断两次 feedback 均 HTTP 200/stop/非空 content/reasoning 长度 0；当前题目 11 个 claims 全为 INSUFFICIENT_EVIDENCE，Evidence projection 为 0，confirm gate 禁止推进。具体 resolveClaim 降级原因尚未确定；需要 per-claim 安全 resolution reason diagnostics。上述摘要只记录状态和计数，不记录答案、claim text、quote 或 secret。
 - T-W1-019 第二轮定向验证：Worker service/stop watcher 13/13，Guided Learning HTTP 3/3，Evidence Worker 3/3，BYOK 8/8，PowerShell 静态 5/5，runtime integration 27/27，完整 integration 101/101，`test:v1-smoke` 1/1，Playwright 3/3；lint、typecheck、build、contract 和 platform smoke 通过。离线 security scan 枚举 293 files、扫描 268 text files 并通过。
-- Windows managed process smoke 未完成：固定端口 `127.0.0.1:4310` 被仓库外进程占用；`npm test` 因该 1 项失败（其余 29/29 通过）。直接执行 start 已验证返回非零、未创建 `tmp/v1-local/state.json`、未启动或终止任何托管/外部进程。
-- 在线依赖门禁未通过：`npm run security` 和 `npm audit --omit=dev` 均报告 transitive `fast-uri` 1 个 high 漏洞；依赖清单不在本轮批准写入边界，未执行 `npm audit fix`。
+- 第三轮已将 managed process smoke 移到 `tests/release-gate/`；标准 `npm test` 在 4310 被占用时仍为 30/30。独立 `test:v1-managed-windows` 的正常生命周期、启动失败 control-file 回滚和超时保留 state/API/Web 三项因同一端口占用未实际进入进程路径。
+- `fast-uri` 两条生产依赖解析已定向更新为 3.1.4 与 4.1.1；package-lock 仅两处版本、registry URL 和 integrity 改变，未使用 override，Fastify 与 engine 未变化。`npm run security` 和 `npm audit --omit=dev` 均通过且为 0 vulnerabilities。
 - 本地完整 `npm run ci` 仍在首步 `format` 受既有 Windows CRLF checkout 问题阻断；本次不批量改写全仓换行。
 - `contract:check` 本身已通过；不能把本地 CI 的 CRLF 阻断写成契约 drift 失败。
 - T-W1-011 分支未实际运行 smoke；本次文档同步不补写未执行结果，且本轮未修改 runtime。
@@ -105,16 +109,14 @@ main 已包含 API/SQLite runtime 和 T-W1-014 Worker：
 - T-W1-015、T-W1-016 和 T-W1-017 已合并 main；T-W1-018 Release Gate 修复尚未合并 main；真实 BYOK 外部连接、方向、问题、feedback、RETRY、EDIT_ANSWER、PDF 上传和页面恢复已完成人工验收，Evidence 人工抽查因没有 VERIFIED Evidence 阻塞，产品负责人批准尚未完成。
 - 全仓 Windows CRLF format 基线治理尚未解决。
 - 固定端口 4310 当前被仓库外进程监听，Windows start/check/stop 实机闭环需在端口由用户安全释放后重跑；不得由 Agent 终止该外部进程或切换动态端口。
-- transitive `fast-uri` 当前有 1 个 high npm advisory；修复需要另行批准依赖清单变更并重新运行 security/audit。
 - RFC-W1-002 仍需完整的产品/技术审批，不因契约决定记录而整体变为 `ACCEPTED`。
 
 ## 下一步（不自动执行）
 
 按依赖顺序，下一步应是：
 
-1. 用户安全释放固定端口 4310 后，在 Windows 重跑 `npm test` 和 start/check/stop 实机闭环，核验 Worker `CONTROL_FILE` 事件、停止顺序、状态清理、数据库/content/logs 保留及无托管进程遗留。
-2. 另行批准依赖清单修复范围后处理 `fast-uri` advisory，并重跑 `npm run security` 与 `npm audit --omit=dev`；不得在本任务中越界自动修复。
-3. 完成 Chrome/Edge PDF viewer、DeepSeek 四 operation 和 Claim/引用科研语义人工复验，再交独立 reviewer；不自动创建 tag。
+1. 用户安全释放固定端口 4310 后，在 Windows 重跑 `npm run test:v1-managed-windows` 和 start/check/stop 实机闭环，核验启动异常回滚、Worker `CONTROL_FILE` 事件、停止顺序、状态清理、数据库/content/logs 保留及无托管进程或 RUNNING Job 遗留。
+2. 完成 Chrome/Edge PDF viewer、DeepSeek 四 operation 和 Claim/引用科研语义人工复验，再交独立 reviewer；不自动创建 tag。
 
 不自动扩大 T-W1-005/T-W1-006 的范围；不因 T-W1-014 集成而宣称整个 Wave 1 完成。
 
