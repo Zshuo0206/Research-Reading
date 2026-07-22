@@ -5,6 +5,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $statePath = Join-Path $repoRoot "tmp\v1-local\processes.json"
+$stateTemporaryPath = "$statePath.tmp"
 if (-not (Test-Path -LiteralPath $statePath)) {
   Write-Error "No V1 local state exists. Run scripts/start-v1-local.ps1."
   exit 1
@@ -42,23 +43,43 @@ function Test-WorkerReadyEvent {
   )
 }
 
+function Test-ControlFileStoppedEvent {
+  param([string]$Path)
+  foreach ($event in @(Read-JsonEvents -Path $Path)) {
+    if (
+      [string]$event.event -eq "worker_platform_shell_stopped" -and
+      [string]$event.signal -eq "CONTROL_FILE"
+    ) { return $true }
+  }
+  return $false
+}
+
+function Write-StateLifecycle {
+  param([string]$LifecycleStatus)
+  $state.lifecycle_status = $LifecycleStatus
+  $stateJson = $state | ConvertTo-Json -Depth 6
+  try {
+    Set-Content -LiteralPath $stateTemporaryPath -Value $stateJson -Encoding utf8
+    [System.IO.File]::Replace($stateTemporaryPath, $statePath, $null)
+  } finally {
+    Remove-Item -LiteralPath $stateTemporaryPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
 $unhealthy = $false
 $degraded = $false
-if (
-  -not ($state.PSObject.Properties.Name -contains "lifecycle_status") -or
-  [string]$state.lifecycle_status -ne "READY"
-) {
-  $lifecycleStatus = if ($state.PSObject.Properties.Name -contains "lifecycle_status") {
-    [string]$state.lifecycle_status
-  } else {
-    "UNKNOWN"
-  }
-  Write-Output "managed lifecycle: $lifecycleStatus"
-  $unhealthy = $true
+$lifecycleStatus = if ($state.PSObject.Properties.Name -contains "lifecycle_status") {
+  [string]$state.lifecycle_status
+} else {
+  "UNKNOWN"
 }
+Write-Output "managed lifecycle: $lifecycleStatus"
+
+$ownedRunning = @{}
 foreach ($record in $state.processes) {
   $process = Get-Process -Id ([int]$record.pid) -ErrorAction SilentlyContinue
   if (-not $process) {
+    $ownedRunning[[string]$record.role] = $false
     Write-Output "$($record.role): stopped"
     $unhealthy = $true
     continue
@@ -66,11 +87,59 @@ foreach ($record in $state.processes) {
   $actualStart = $process.StartTime.ToUniversalTime()
   $expectedStart = ([DateTime]$record.start_time_utc).ToUniversalTime()
   if ($actualStart.Ticks -ne $expectedStart.Ticks) {
+    $ownedRunning[[string]$record.role] = $false
     Write-Output "$($record.role): PID reused; not owned by this state"
     $unhealthy = $true
     continue
   }
+  $ownedRunning[[string]$record.role] = $true
   Write-Output "$($record.role): running (PID $($record.pid))"
+}
+
+$workerRecord = @($state.processes | Where-Object { $_.role -eq "worker" })[0]
+if (
+  $lifecycleStatus -eq "READY" -and
+  $state.PSObject.Properties.Name -contains "worker_ready_observed" -and
+  $state.worker_ready_observed -eq $true -and
+  $workerRecord -and
+  $ownedRunning["worker"] -ne $true -and
+  -not (Test-ControlFileStoppedEvent -Path ([string]$state.logs.worker_stdout))
+) {
+  Write-StateLifecycle -LifecycleStatus "CRASHED_WORKER_REVIEW_REQUIRED"
+  Write-Warning "A ready Worker exited without CONTROL_FILE stopped evidence; a RUNNING Job may be orphaned."
+  Write-Output "V1 local status: CRASHED_WORKER_REVIEW_REQUIRED"
+  exit 1
+}
+
+if (@("STARTING_API", "STARTING_WEB", "STARTING_WORKER") -contains $lifecycleStatus) {
+  Write-Output "V1 local status: starting"
+  exit 1
+}
+if ($lifecycleStatus -eq "START_FAILED_STOP_PENDING") {
+  Write-Output "V1 local status: START_FAILED_STOP_PENDING"
+  exit 1
+}
+if ($lifecycleStatus -eq "CRASHED_WORKER_REVIEW_REQUIRED") {
+  Write-Warning "A ready Worker exited without CONTROL_FILE stopped evidence; a RUNNING Job may be orphaned."
+  Write-Output "V1 local status: CRASHED_WORKER_REVIEW_REQUIRED"
+  exit 1
+}
+if ($lifecycleStatus -ne "READY") {
+  Write-Output "V1 local status: unhealthy"
+  exit 1
+}
+if (
+  -not ($state.PSObject.Properties.Name -contains "worker_ready_observed") -or
+  $state.worker_ready_observed -ne $true
+) {
+  Write-Output "worker ready state: not observed"
+  $unhealthy = $true
+}
+foreach ($requiredRole in @("api", "web", "worker")) {
+  if (@($state.processes | Where-Object { $_.role -eq $requiredRole }).Count -ne 1) {
+    Write-Output "$requiredRole ownership: missing or duplicated"
+    $unhealthy = $true
+  }
 }
 
 try {
