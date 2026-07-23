@@ -53,6 +53,23 @@ function Test-WorkerReadyEvent {
   )
 }
 
+function Test-WorkerReadyLog {
+  return @(
+    Read-JsonEvents -Path $logs.worker_stdout | Where-Object {
+      Test-WorkerReadyEvent -Event $_
+    }
+  ).Count -gt 0
+}
+
+function Sync-WorkerReadyObservation {
+  $readyInLog = Test-WorkerReadyLog
+  if ($readyInLog -and -not $script:workerReadyObserved) {
+    $script:workerReadyObserved = $true
+    Write-ManagedState -LifecycleStatus "STARTING_WORKER"
+  }
+  return $readyInLog
+}
+
 function Test-ControlFileStoppedEvent {
   param([string]$Path)
   foreach ($event in @(Read-JsonEvents -Path $Path)) {
@@ -163,7 +180,7 @@ New-Item -ItemType Directory -Path $ContentRoot -Force | Out-Null
 $nodePath = (Get-Command node -ErrorAction Stop).Source
 $started = [System.Collections.Generic.List[object]]::new()
 $workerRecord = $null
-$workerReadyObserved = $false
+$script:workerReadyObserved = $false
 $managedEnvironment = @(
   "SQLITE_DATABASE_PATH",
   "CONTENT_STORAGE_ROOT",
@@ -188,7 +205,7 @@ function Write-ManagedState {
     run_directory = $runDirectory
     worker_stop_file = $workerStopFile
     worker_entrypoint = $workerEntrypoint
-    worker_ready_observed = [bool]$workerReadyObserved
+    worker_ready_observed = [bool]$script:workerReadyObserved
     api_url = $apiUrl
     web_url = $webUrl
     database_path = $DatabasePath
@@ -294,21 +311,21 @@ function Wait-WorkerReady {
   param($Record)
   $deadline = [DateTime]::UtcNow.AddSeconds(30)
   while ([DateTime]::UtcNow -lt $deadline) {
-    if (-not (Test-OwnedProcessRunning -Record $Record)) {
-      throw "Worker exited before a valid ready event was observed."
-    }
+    $readyInLog = Sync-WorkerReadyObservation
     $workerErrors = @(Read-JsonEvents -Path $logs.worker_stderr | Where-Object {
       @("worker_start_failed", "worker_platform_shell_error") -contains [string]$_.event
     })
+    $workerAlive = Test-OwnedProcessRunning -Record $Record
+    if (-not $workerAlive) {
+      if ($readyInLog) {
+        throw "Worker exited after valid ready evidence was emitted."
+      }
+      throw "Worker exited before a valid ready event was observed."
+    }
     if ($workerErrors.Count -gt 0) {
       throw "Worker emitted a startup failure event before becoming ready."
     }
-    $ready = @(
-      Read-JsonEvents -Path $logs.worker_stdout | Where-Object {
-        Test-WorkerReadyEvent -Event $_
-      }
-    ).Count -gt 0
-    if ($ready -and (Test-ApiHealth) -and (Test-WebHealth)) { return }
+    if ($readyInLog -and (Test-ApiHealth) -and (Test-WebHealth)) { return }
     Start-Sleep -Milliseconds 250
   }
   throw "Worker did not produce valid ready evidence while API and Web remained healthy within 30 seconds."
@@ -410,7 +427,7 @@ try {
   $workerRecord = Start-V1OwnedProcess -Role "worker" -Arguments @($workerScript) -StandardOutput $logs.worker_stdout -StandardError $logs.worker_stderr -LifecycleStatus "STARTING_WORKER"
   [Environment]::SetEnvironmentVariable("WORKER_STOP_FILE", $null, "Process")
   Wait-WorkerReady -Record $workerRecord
-  $workerReadyObserved = $true
+  $script:workerReadyObserved = $true
   Write-ManagedState -LifecycleStatus "READY"
   Wait-TestRollbackTrigger
 
@@ -421,6 +438,14 @@ try {
   $startupFailure = $_
   if (-not $workerRecord) {
     $workerRecord = @($started | Where-Object { $_.role -eq "worker" })[0]
+  }
+  $readyInLog = $false
+  try {
+    $readyInLog = Sync-WorkerReadyObservation
+  } catch {
+    Write-Warning "Could not persist ready evidence before startup recovery."
+    $readyInLog = Test-WorkerReadyLog
+    if ($readyInLog) { $script:workerReadyObserved = $true }
   }
   if (-not $workerRecord) {
     Stop-OwnedApiAndWeb
@@ -440,7 +465,7 @@ try {
     }
   }
 
-  if (-not $workerReadyObserved) {
+  if (-not $script:workerReadyObserved) {
     Write-Output "worker: failed before ready; API and Web cleaned up safely"
     Stop-OwnedApiAndWeb
     Remove-ActiveManagedState

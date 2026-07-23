@@ -122,9 +122,7 @@ if ($AcknowledgeCrashedWorker) {
   foreach ($role in @("api", "web")) {
     $record = Get-RoleRecord -Role $role
     if (-not $record) { throw "Crashed-Worker state has no $role ownership record." }
-    if (-not (Get-OwnedProcess -Record $record)) {
-      throw "Refusing crashed-Worker cleanup because owned $role is no longer running."
-    }
+    [void](Get-OwnedProcess -Record $record)
   }
   Write-Warning "Acknowledging a ready Worker crash without CONTROL_FILE stopped evidence. A RUNNING Job may be orphaned; no Job or database row will be changed."
   $archivePath = Join-Path $runDirectory "crashed-worker-state.json"

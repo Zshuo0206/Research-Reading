@@ -112,6 +112,10 @@ if (
 }
 
 if (@("STARTING_API", "STARTING_WEB", "STARTING_WORKER") -contains $lifecycleStatus) {
+  if ($unhealthy) {
+    Write-Output "V1 local status: unhealthy interrupted startup"
+    exit 1
+  }
   Write-Output "V1 local status: starting"
   exit 1
 }

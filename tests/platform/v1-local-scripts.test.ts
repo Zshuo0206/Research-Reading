@@ -34,8 +34,11 @@ describe("V1 local PowerShell operations", () => {
 
     expect(start).toContain('schema_version = "v1-local-processes.v4"');
     expect(start).toContain(
-      "worker_ready_observed = [bool]$workerReadyObserved",
+      "worker_ready_observed = [bool]$script:workerReadyObserved",
     );
+    expect(start).toContain("function Test-WorkerReadyLog");
+    expect(start).toContain("function Sync-WorkerReadyObservation");
+    expect(start).toContain("$script:workerReadyObserved = $true");
     expect(start).toContain("processes = @($started)");
     expect(start).toContain('LifecycleStatus = "STARTING_WEB"');
     expect(start).toContain('-LifecycleStatus "STARTING_API"');
@@ -44,7 +47,7 @@ describe("V1 local PowerShell operations", () => {
       start.indexOf("Write-ManagedState -LifecycleStatus $LifecycleStatus"),
     );
     expect(start).toContain('Write-ManagedState -LifecycleStatus "READY"');
-    expect(start.indexOf("$workerReadyObserved = $true")).toBeLessThan(
+    expect(start.indexOf("$script:workerReadyObserved = $true")).toBeLessThan(
       start.indexOf('Write-ManagedState -LifecycleStatus "READY"'),
     );
     expect(start).toContain('$stateTemporaryPath = "$statePath.tmp"');
@@ -96,7 +99,12 @@ describe("V1 local PowerShell operations", () => {
     expect(webStart).toBeGreaterThan(apiHealth);
     expect(webHealth).toBeGreaterThan(webStart);
     expect(workerStart).toBeGreaterThan(webHealth);
-    expect(start).toContain("if (-not $workerReadyObserved) {");
+    expect(start).toContain("if (-not $script:workerReadyObserved) {");
+    expect(start).toContain("$readyInLog = Sync-WorkerReadyObservation");
+    expect(start).toContain("Worker exited after valid ready evidence was emitted.");
+    expect(start.indexOf("$readyInLog = Sync-WorkerReadyObservation")).toBeLessThan(
+      start.indexOf("$workerAlive = Test-OwnedProcessRunning"),
+    );
     expect(start).toContain(
       'Write-ManagedState -LifecycleStatus "START_FAILED_STOP_PENDING"',
     );
@@ -121,6 +129,10 @@ describe("V1 local PowerShell operations", () => {
     expect(stop).toContain("crashed-worker-state.json");
     expect(stop).toContain("no Job or database row will be changed");
     expect(stop).toContain("This was not a graceful Worker stop");
+    expect(stop).toContain('Write-Output "$($role): already stopped"');
+    expect(stop).not.toContain(
+      "Refusing crashed-Worker cleanup because owned $role is no longer running.",
+    );
     expect(stop).toContain("actualStart");
     expect(stop).toContain("PID $($Record.pid) was reused");
     expect(stop).not.toMatch(
@@ -132,6 +144,7 @@ describe("V1 local PowerShell operations", () => {
     const check = readFileSync(resolve(scripts[1]), "utf8");
 
     expect(check).toContain("V1 local status: starting");
+    expect(check).toContain("V1 local status: unhealthy interrupted startup");
     expect(check).toContain("V1 local status: startup rollback pending");
     expect(check).toContain("V1 local status: crashed worker review required");
     expect(check).toContain("a RUNNING Job may be orphaned");
