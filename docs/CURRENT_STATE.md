@@ -3,6 +3,10 @@
 最后更新：2026-07-22（Asia/Shanghai）
 状态：`BLOCKED`
 
+第五轮最终代码收口（本地工作基线 `244454df46f8f88ac66d7696ae36b0f7351795da`）：ready 日志中的合法 `worker_platform_shell_ready` 事件是 `worker_ready_observed` 的权威来源；日志一经写出即立即原子持久化观察结果，整体生命周期仍可保持 `STARTING_WORKER`，直到 API/Web health 与 Worker ready 条件全部满足才写 `READY`。`Wait-WorkerReady` 先同步 ready、读取错误事件、检查 Worker ownership，再检查 API/Web health；startup catch 也会重新读取日志，因此 ready 已输出但 Worker 在 PowerShell 成功观察前退出时进入 `CRASHED_WORKER_REVIEW_REQUIRED`，不会误报 ready 前失败。显式 `-AcknowledgeCrashedWorker` 允许已自行停止的 owned API 或 Web，仍严格拒绝 PID 复用，归档 crash state、清理仍存活的 owned 进程且不修改任何 Job 或数据库行。`check-v1-local.ps1` 对已记录进程死亡或 PID 复用的 `STARTING_*` 状态报告 `unhealthy interrupted startup`。
+
+第五轮新增 managed Release Gate 覆盖：真实 `StorageRepository`、`JobRuntime`、`runWorkerService`/`runWorkerLoop` 路径在 PowerShell 写入 `READY` 前完成 ready 输出、真实 claim 为 `RUNNING` 并以 `process.exit(17)` 崩溃；以及 API 已停止、Web 已停止的显式 crashed-worker cleanup。固定端口 `127.0.0.1:4310` 仍需安全释放后才能将这些真实进程场景记为通过；本轮不终止外部占用者。非 managed 强杀、断电、系统崩溃后的 orphan RUNNING 自动恢复仍未实现。GitHub CLI 已安装但未认证，未执行 GitHub CLI 写操作，也未通过 GitHub CLI 查询远端 CI。
+
 第三轮定向修复基于已推送的 `130502353a500c8767be28739782d2f0e7f11632`：启动顺序改为 API health → Web health → Worker，Worker 创建后的启动失败统一使用 control file 回滚并以 `STARTING`、`READY`、`START_FAILED_STOP_PENDING` 记录生命周期；fixed-port managed smoke 已从标准 `npm test` 分离到 `npm run test:v1-managed-windows`；Guided Learning 持久化故障安全返回 `INTERNAL_ERROR`/500；`fast-uri` 已从 3.1.3/4.1.0 定向更新为 3.1.4/4.1.1。
 
 第三轮验证：`npm ci --ignore-scripts`、lint（86 files）、typecheck、build、标准 `npm test`（4 files/30 tests）、runtime integration（6/27）、完整 integration（18/103）、V1 smoke（1/1）、Playwright（3/3）、contract（10 schemas）、platform smoke、security（293 files/268 text files）和 `npm audit --omit=dev` 均通过，audit 为 0 vulnerabilities。独立 Windows managed Release Gate 的 3 个真实进程测试因外部 `127.0.0.1:4310` 监听者而明确阻塞；未终止占用进程，因此不能宣称完整 Release Gate 通过。

@@ -145,3 +145,18 @@ round_four_closure:
     - "Chrome/Edge PDF viewer, real DeepSeek four-operation behavior, and Claim/citation scientific semantics remain manual acceptance items."
   prohibited_actions_confirmed:
     - "No push, force push, PR, tag, Release, main change/merge, contract/migration/Storage schema change, Acceptance access, real external model call, real secret read, external listener termination or production Worker dist overwrite."
+round_five_closure:
+  base_commit: "244454df46f8f88ac66d7696ae36b0f7351795da"
+  status: "BLOCKED"
+  implementation:
+    - "Valid ready evidence in the current Worker stdout is authoritative for worker_ready_observed and is persisted immediately while lifecycle remains STARTING_WORKER until full health succeeds."
+    - "Wait-WorkerReady and startup catch resynchronize ready evidence before classifying Worker failure, so ready-before-observation crashes enter CRASHED_WORKER_REVIEW_REQUIRED."
+    - "Explicit crashed-Worker acknowledgement permits an owned API or Web that already stopped, while preserving PID/start-time reuse rejection and changing no Job or database row."
+    - "check-v1-local.ps1 reports unhealthy interrupted startup when a STARTING_* state has a stopped or reused owned process."
+  verification_scope:
+    - "Added a real runtime ready-before-observation race using StorageRepository, JobRuntime, runWorkerService/runWorkerLoop, a real SQLite claim to RUNNING and process.exit(17)."
+    - "Added API-already-stopped and Web-already-stopped acknowledgement scenarios with ownership verification, archive, remaining-process cleanup and runtime-data retention assertions."
+    - "Managed Windows Release Gate remains blocked until fixed port 4310 is safely free; the external listener must not be terminated."
+  external_review_notes:
+    - "GitHub CLI is installed but not authenticated; no GitHub CLI write operations were executed and remote CI evidence was not queried through GitHub CLI."
+    - "Non-managed kill/power-loss/system-crash orphan RUNNING recovery, single-Worker limit, Chrome/Edge PDF viewer, real DeepSeek four-operation behavior and Claim/citation scientific semantics remain open."
