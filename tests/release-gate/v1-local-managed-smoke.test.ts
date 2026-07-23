@@ -436,6 +436,210 @@ describe("V1 managed local process release gate", () => {
   );
 
   windowsIt(
+    "recognizes ready evidence emitted before PowerShell observes it",
+    async () => {
+      await requireManagedEnvironment();
+      const beforeRuns = listRunDirectories();
+      const temporaryDirectory = createTemporaryDirectory("ready-race");
+      const databasePath = join(temporaryDirectory, "ready-race.sqlite");
+      const contentRoot = join(temporaryDirectory, "content");
+      const workerEntrypoint = join(
+        temporaryDirectory,
+        "ready-race-worker.mjs",
+      );
+      createQueuedJobs(databasePath, 1);
+      writeFileSync(
+        workerEntrypoint,
+        realJobWorkerFixture({ crashImmediatelyAfterClaim: true }),
+        "utf8",
+      );
+      let runDirectory: string | undefined;
+      let cleanupFailure: string | undefined;
+      try {
+        const started = spawnScript(
+          "start-v1-local.ps1",
+          ["-DatabasePath", databasePath, "-ContentRoot", contentRoot],
+          testEnvironment(workerEntrypoint),
+        );
+        const result = await started.completed;
+        expect(result.status).not.toBe(0);
+        expect(result.stdout).toContain("managed lifecycle: STARTING_WORKER");
+        expect(result.stdout).not.toContain("managed lifecycle: READY");
+        expect(`${result.stdout}\n${result.stderr}`).toContain(
+          "requires crashed-Worker review",
+        );
+
+        expect(existsSync(statePath)).toBe(true);
+        const crashedState = readState();
+        runDirectory = resolve(crashedState.run_directory);
+        expect(crashedState.lifecycle_status).toBe(
+          "CRASHED_WORKER_REVIEW_REQUIRED",
+        );
+        expect(crashedState.worker_ready_observed).toBe(true);
+        expect(readJsonEvents(crashedState.logs.worker_stdout)).toContainEqual(
+          expect.objectContaining({
+            event: "worker_platform_shell_ready",
+            accepts_jobs: true,
+            readiness_verified: expect.arrayContaining([
+              "database",
+              "migrations",
+              "handlers",
+            ]),
+          }),
+        );
+        const workerRecord = crashedState.processes.find(
+          (record) => record.role === "worker",
+        );
+        expect(isProcessAlive(workerRecord?.pid ?? -1)).toBe(false);
+        for (const role of ["api", "web"]) {
+          const record = crashedState.processes.find(
+            (item) => item.role === role,
+          );
+          expect(record).toBeDefined();
+          expect(isProcessAlive(record?.pid ?? -1)).toBe(true);
+        }
+        expect(readJob(databasePath, "managed-job-1")).toMatchObject({
+          state: "RUNNING",
+          attempt: 1,
+        });
+        expect(countRunningJobs(databasePath)).toBe(1);
+        expect(
+          readJsonEvents(crashedState.logs.worker_stdout),
+        ).not.toContainEqual(
+          expect.objectContaining({
+            event: "worker_platform_shell_stopped",
+            signal: "CONTROL_FILE",
+          }),
+        );
+
+        const refused = runScript("stop-v1-local.ps1");
+        expect(refused.status).not.toBe(0);
+        expect(existsSync(statePath)).toBe(true);
+        expect(countRunningJobs(databasePath)).toBe(1);
+
+        const acknowledged = runScript("stop-v1-local.ps1", [
+          "-AcknowledgeCrashedWorker",
+        ]);
+        expect(acknowledged.status, diagnostic(acknowledged)).toBe(0);
+        expect(acknowledged.stdout).toContain("not a graceful Worker stop");
+        expect(
+          existsSync(join(runDirectory, "crashed-worker-state.json")),
+        ).toBe(true);
+        expect(existsSync(statePath)).toBe(false);
+        expect(countRunningJobs(databasePath)).toBe(1);
+        expect(existsSync(databasePath)).toBe(true);
+        expect(existsSync(contentRoot)).toBe(true);
+        expect(existsSync(crashedState.logs.worker_stdout)).toBe(true);
+      } finally {
+        runDirectory ??= findOptionalNewRunDirectory(beforeRuns);
+        cleanupFailure = cleanupManagedState(runDirectory);
+        if (!cleanupFailure) {
+          rmSync(temporaryDirectory, { recursive: true, force: true });
+          removeOwnedRunDirectory(runDirectory);
+        }
+      }
+      if (cleanupFailure) throw new Error(cleanupFailure);
+    },
+    120_000,
+  );
+
+  windowsIt.each(["api", "web"] as const)(
+    "allows crashed-worker acknowledgement when %s is already stopped",
+    async (stoppedRole) => {
+      await requireManagedEnvironment();
+      const beforeRuns = listRunDirectories();
+      const temporaryDirectory = createTemporaryDirectory(
+        `partial-${stoppedRole}`,
+      );
+      const databasePath = join(temporaryDirectory, "partial.sqlite");
+      const contentRoot = join(temporaryDirectory, "content");
+      const crashTrigger = join(temporaryDirectory, "crash-trigger");
+      const workerEntrypoint = join(
+        temporaryDirectory,
+        "partial-worker.mjs",
+      );
+      createQueuedJobs(databasePath, 1);
+      writeFileSync(
+        workerEntrypoint,
+        realJobWorkerFixture({ crashFile: crashTrigger }),
+        "utf8",
+      );
+      let runDirectory: string | undefined;
+      let cleanupFailure: string | undefined;
+      try {
+        const started = spawnScript(
+          "start-v1-local.ps1",
+          ["-DatabasePath", databasePath, "-ContentRoot", contentRoot],
+          testEnvironment(workerEntrypoint, crashTrigger),
+        );
+        const readyState = await waitForState(
+          (state) =>
+            state.lifecycle_status === "READY" &&
+            readJob(databasePath, "managed-job-1").state === "RUNNING",
+          45_000,
+        );
+        runDirectory = resolve(readyState.run_directory);
+        touch(crashTrigger);
+        const result = await started.completed;
+        expect(result.status).not.toBe(0);
+
+        const crashedState = readState();
+        expect(crashedState.lifecycle_status).toBe(
+          "CRASHED_WORKER_REVIEW_REQUIRED",
+        );
+        expect(crashedState.worker_ready_observed).toBe(true);
+        const stoppedRecord = crashedState.processes.find(
+          (record) => record.role === stoppedRole,
+        );
+        expect(stoppedRecord).toBeDefined();
+        assertOwnedProcess(stoppedRecord as ManagedState["processes"][number]);
+        process.kill(stoppedRecord?.pid ?? -1);
+        await waitForCondition(
+          () => !isProcessAlive(stoppedRecord?.pid ?? -1),
+          10_000,
+          `${stoppedRole} owned process to stop`,
+        );
+
+        const remainingRole = stoppedRole === "api" ? "web" : "api";
+        const remainingRecord = crashedState.processes.find(
+          (record) => record.role === remainingRole,
+        );
+        expect(isProcessAlive(remainingRecord?.pid ?? -1)).toBe(true);
+
+        const acknowledged = runScript("stop-v1-local.ps1", [
+          "-AcknowledgeCrashedWorker",
+        ]);
+        expect(acknowledged.status, diagnostic(acknowledged)).toBe(0);
+        expect(acknowledged.stdout).toContain(
+          `${stoppedRole}: already stopped`,
+        );
+        expect(isProcessAlive(remainingRecord?.pid ?? -1)).toBe(false);
+        expect(
+          existsSync(join(runDirectory, "crashed-worker-state.json")),
+        ).toBe(true);
+        expect(existsSync(statePath)).toBe(false);
+        expect(readJob(databasePath, "managed-job-1")).toMatchObject({
+          state: "RUNNING",
+          attempt: 1,
+        });
+        expect(countRunningJobs(databasePath)).toBe(1);
+        expect(existsSync(databasePath)).toBe(true);
+        expect(existsSync(contentRoot)).toBe(true);
+        expect(existsSync(crashedState.logs.worker_stdout)).toBe(true);
+      } finally {
+        runDirectory ??= findOptionalNewRunDirectory(beforeRuns);
+        cleanupFailure = cleanupManagedState(runDirectory);
+        if (!cleanupFailure) {
+          rmSync(temporaryDirectory, { recursive: true, force: true });
+          removeOwnedRunDirectory(runDirectory);
+        }
+      }
+      if (cleanupFailure) throw new Error(cleanupFailure);
+    },
+    120_000,
+  );
+
+  windowsIt(
     "requires explicit acknowledgement after a ready Worker crashes without CONTROL_FILE evidence",
     async () => {
       await requireManagedEnvironment();
@@ -672,6 +876,25 @@ function assertManagedStopOrder(output: string): void {
   expect(webStoppedIndex).toBeGreaterThan(apiStoppedIndex);
 }
 
+function assertOwnedProcess(record: ManagedState["processes"][number]): void {
+  const result = spawnSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `$process = Get-Process -Id ${record.pid} -ErrorAction Stop; $process.StartTime.ToUniversalTime().ToString('o')`,
+    ],
+    { encoding: "utf8" },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  expect(
+    Math.abs(
+      Date.parse(result.stdout.trim()) - Date.parse(record.start_time_utc),
+    ),
+  ).toBeLessThan(1_000);
+}
+
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -717,6 +940,7 @@ process.exit(1);
 function realJobWorkerFixture(options: {
   releaseFile?: string;
   crashFile?: string;
+  crashImmediatelyAfterClaim?: boolean;
 }): string {
   const storageUrl = pathToFileURL(
     resolve("packages/storage/dist/index.js"),
@@ -731,7 +955,7 @@ function realJobWorkerFixture(options: {
     resolve("apps/worker/dist/worker-loop.js"),
   ).href;
   const migrationsDirectory = resolve("apps/api/migrations");
-  return `import { existsSync } from "node:fs";
+  return `import { existsSync, writeSync } from "node:fs";
 import { openDatabase, StorageRepository } from ${JSON.stringify(storageUrl)};
 import { JobRuntime } from ${JSON.stringify(jobRuntimeUrl)};
 import { runWorkerService } from ${JSON.stringify(workerServiceUrl)};
@@ -741,8 +965,10 @@ const database = openDatabase(process.env.SQLITE_DATABASE_PATH, { migrationsDire
 const storage = new StorageRepository(database);
 const releaseFile = ${JSON.stringify(options.releaseFile ?? null)};
 const crashFile = ${JSON.stringify(options.crashFile ?? null)};
+const crashImmediatelyAfterClaim = ${JSON.stringify(options.crashImmediatelyAfterClaim ?? false)};
 const wait = (delay) => new Promise((resolvePromise) => setTimeout(resolvePromise, delay));
 const handler = async () => {
+  if (crashImmediatelyAfterClaim) process.exit(17);
   for (;;) {
     if (crashFile && existsSync(crashFile)) process.exit(17);
     if (releaseFile && existsSync(releaseFile)) return { released: true };
@@ -750,13 +976,13 @@ const handler = async () => {
   }
 };
 const jobRuntime = new JobRuntime(storage, "managed-release-worker", { QUESTION_PLAN: handler });
-console.log(JSON.stringify({
+writeSync(1, JSON.stringify({
   event: "worker_platform_shell_ready",
   service: "worker-platform-shell",
   accepts_jobs: true,
   readiness_verified: ["database", "migrations", "handlers"],
   registered_handlers: ["QUESTION_PLAN"]
-}));
+}) + "\\n");
 const stopController = new AbortController();
 let stopSignal;
 const requestStop = (signal) => {
